@@ -97,7 +97,6 @@ export class GameScene extends Phaser.Scene {
   private enemyHint!: Phaser.GameObjects.Text | null;
   private spotlightPointer!: Phaser.GameObjects.Text | null;
 
-  // Ритм-система
   private beatTimer = 0;
   private beatCounter = 0;
   private beatWindow = 0.14;
@@ -111,7 +110,6 @@ export class GameScene extends Phaser.Scene {
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private spaceKey!: Phaser.Input.Keyboard.Key;
 
-  // Счет
   private applause = 0;
   private bestApplause = 0;
   private act = 1;
@@ -121,7 +119,6 @@ export class GameScene extends Phaser.Scene {
   private dashTimer = 0;
   private isGameOver = false;
 
-  // UI
   private applauseText!: Phaser.GameObjects.Text;
   private actText!: Phaser.GameObjects.Text;
   private rhythmFeedbackText!: Phaser.GameObjects.Text;
@@ -146,10 +143,8 @@ export class GameScene extends Phaser.Scene {
 
     this.bestApplause = parseInt(localStorage.getItem('showman_best_applause') || '0', 10);
 
-    // 1. Деревянный паркет театра
     this.drawWoodenStage(width, height);
 
-    // 2. Золотой софит
     this.spotlight = this.add.circle(width * 0.78, height * 0.5, 30, 0xfacc15, 0.95);
     this.spotlight.setStrokeStyle(3, 0xffffff);
 
@@ -160,10 +155,9 @@ export class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    // 3. Шоумен + Кольцо ритма
     this.showman = this.add.rectangle(width * 0.25, height * 0.5, 32, 32, 0xd90429);
     this.showman.setStrokeStyle(2, 0xfbbf24);
-    this.showman.setDepth(1); // Шоумен всегда выше конфетти на полу
+    this.showman.setDepth(1);
 
     this.rhythmRing = this.add.circle(this.showman.x, this.showman.y, 42, 0xfbbf24, 0);
     this.rhythmRing.setStrokeStyle(2, 0xfbbf24, 0.8);
@@ -176,10 +170,8 @@ export class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    // 4. Метроном внизу экрана
     this.createRhythmMetronome(width, height);
 
-    // 5. UI
     this.applauseText = this.add.text(28, 24, 'ОВАЦИИ: 0', {
       fontFamily: 'Georgia, serif',
       fontSize: '24px',
@@ -207,7 +199,6 @@ export class GameScene extends Phaser.Scene {
       color: '#facc15',
     }).setOrigin(0.5).setDepth(5);
 
-    // Управление
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys({
       up: Phaser.Input.Keyboard.KeyCodes.W,
@@ -301,8 +292,21 @@ export class GameScene extends Phaser.Scene {
 
       if (this.beatCounter % 2 === 0) {
         RhythmAudio.kick();
+
+        if (this.enemyHint) {
+          this.enemyHint.setColor('#ffffff');
+          this.tweens.add({
+            targets: this.enemyHint,
+            scale: 1.15,
+            yoyo: true,
+            duration: 120,
+          });
+        }
       } else {
         RhythmAudio.tambourine();
+        if (this.enemyHint) {
+          this.enemyHint.setColor('#f43f5e');
+        }
       }
 
       this.rhythmRing.setScale(1.2);
@@ -333,7 +337,6 @@ export class GameScene extends Phaser.Scene {
       const onBeat = this.isHitOnBeat();
 
       if (onBeat) {
-        // ПОПАЛ В ТАКТ: ДЕШ РАБОТАЕТ!
         this.isDashing = true;
         this.dashTimer = 0.22;
         RhythmAudio.perfectChime();
@@ -342,7 +345,6 @@ export class GameScene extends Phaser.Scene {
         this.applauseText.setText(`ОВАЦИИ: ${this.applause.toLocaleString()}`);
         this.cameras.main.shake(100, 0.015);
       } else {
-        // МИМО РИТМА: ДЕША ПРОСТО НЕТ
         this.showRhythmFeedback('МИМО!', '#94a3b8');
       }
     }
@@ -457,11 +459,9 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  // Взрыв конфетти + серпантинные ленты на полу
   private createConfettiExplosion(x: number, y: number): void {
     const colors = [0xfacc15, 0xe11d48, 0xffffff, 0xfbbf24, 0xf43f5e];
 
-    // 1. Длинные серпантинные ленты, которые сразу падают на пол и остаются
     for (let r = 0; r < 5; r++) {
       const ribbon = this.add.rectangle(
           x + Phaser.Math.Between(-15, 15),
@@ -472,12 +472,11 @@ export class GameScene extends Phaser.Scene {
           0.75
       );
       ribbon.setAngle(Phaser.Math.Between(0, 180));
-      ribbon.setDepth(0.05); // Лежит прямо на паркете, под ногами шоумена
+      ribbon.setDepth(0.05);
 
-      this.floorConfetti.push({ obj: ribbon, life: 14.0 }); // Лежит 14 секунд
+      this.floorConfetti.push({ obj: ribbon, life: 14.0 });
     }
 
-    // 2. Разлетающиеся салютом конфетти
     for (let i = 0; i < 32; i++) {
       const p = this.add.rectangle(
           x,
@@ -486,7 +485,7 @@ export class GameScene extends Phaser.Scene {
           Phaser.Math.Between(5, 8),
           colors[Phaser.Math.Between(0, colors.length - 1)]
       );
-      p.setDepth(1.5); // Летит над персонажами
+      p.setDepth(1.5);
 
       const angle = Math.random() * Math.PI * 2;
       const speed = Phaser.Math.Between(150, 420);
@@ -501,9 +500,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  // Обновление конфетти: полет ➔ оседание на полу ➔ мягкое исчезновение
   private updateConfetti(seconds: number): void {
-    // 1. Летающие конфетти
     for (let i = this.flyingConfetti.length - 1; i >= 0; i--) {
       const c = this.flyingConfetti[i];
       c.life -= seconds * 1.4;
@@ -511,21 +508,18 @@ export class GameScene extends Phaser.Scene {
       c.obj.y += c.vy * seconds;
       c.obj.rotation += c.rotSpeed * seconds;
 
-      // Приземление на паркет
       if (c.life <= 0) {
-        c.obj.setDepth(0.05); // Оседает на пол
+        c.obj.setDepth(0.05);
         c.obj.setAlpha(0.65);
-        this.floorConfetti.push({ obj: c.obj, life: 12.0 }); // Остается лежать 12 секунд
+        this.floorConfetti.push({ obj: c.obj, life: 12.0 });
         this.flyingConfetti.splice(i, 1);
       }
     }
 
-    // 2. Конфетти, лежащие на паркете
     for (let j = this.floorConfetti.length - 1; j >= 0; j--) {
       const fc = this.floorConfetti[j];
       fc.life -= seconds;
 
-      // Медленно растворяются в последние 2 секунды
       if (fc.life < 2.0) {
         fc.obj.alpha = fc.life / 2.0 * 0.65;
       }
