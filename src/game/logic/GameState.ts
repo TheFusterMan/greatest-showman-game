@@ -1,4 +1,4 @@
-export type GamePhase = 'PLAYING' | 'GAME_OVER';
+export type GamePhase = 'PLAYING' | 'PAUSED' | 'GAME_OVER';
 
 export const BPM = 126;
 export const BEAT_TIME = 60 / BPM;
@@ -23,6 +23,12 @@ export class GameState {
 
     constructor() {
         this.bestApplause = parseInt(localStorage.getItem('showman_best_applause') || '0', 10);
+    }
+
+    public togglePause(): boolean {
+        if (this.phase === 'GAME_OVER') return false;
+        this.phase = this.phase === 'PAUSED' ? 'PLAYING' : 'PAUSED';
+        return this.phase === 'PAUSED';
     }
 
     public updateBeat(seconds: number): BeatTick {

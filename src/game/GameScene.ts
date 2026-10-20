@@ -38,6 +38,10 @@ export class GameScene extends Phaser.Scene {
   private actText!: Phaser.GameObjects.Text;
   private rhythmFeedbackText!: Phaser.GameObjects.Text;
 
+  private pauseKeyP!: Phaser.Input.Keyboard.Key;
+  private pauseKeyEsc!: Phaser.Input.Keyboard.Key;
+  private pauseOverlay!: Phaser.GameObjects.Container;
+
   constructor() {
     super('GameScene');
   }
@@ -117,9 +121,26 @@ export class GameScene extends Phaser.Scene {
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
     this.spawnFirstCriticWithHint();
+
+    this.pauseKeyP = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.P);
+    this.pauseKeyEsc = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+
+    this.createPauseOverlay(width, height);
   }
 
   update(_time: number, delta: number): void {
+    if (
+        Phaser.Input.Keyboard.JustDown(this.pauseKeyP) ||
+        Phaser.Input.Keyboard.JustDown(this.pauseKeyEsc)
+    ) {
+      const isPaused = this.state.togglePause();
+      this.pauseOverlay.setVisible(isPaused);
+    }
+
+    if (this.state.phase === 'PAUSED') {
+      return;
+    }
+
     if (this.state.phase === 'GAME_OVER') {
       if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
         this.scene.restart();
@@ -388,5 +409,31 @@ export class GameScene extends Phaser.Scene {
       color: '#fbbf24',
       fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(21);
+  }
+
+  private createPauseOverlay(width: number, height: number): void {
+    this.pauseOverlay = this.add.container(width / 2, height / 2);
+
+    const bg = this.add.rectangle(0, 0, width, height, 0x0a0205, 0.85);
+    const frame = this.add.rectangle(0, 0, 480, 160, 0x1f070e, 0.95).setStrokeStyle(2, 0xfbbf24);
+
+    const title = this.add.text(0, -30, '— АНТРАКТ —', {
+      fontFamily: 'Georgia, serif',
+      fontSize: '44px',
+      color: '#fbbf24',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    const subtitle = this.add.text(0, 30, 'ШОУ НА ПАУЗЕ\nНажмите [P] или [ESC], чтобы продолжить', {
+      fontFamily: 'Georgia, serif',
+      fontSize: '18px',
+      color: '#fef08a',
+      align: 'center',
+      lineSpacing: 8,
+    }).setOrigin(0.5);
+
+    this.pauseOverlay.add([bg, frame, title, subtitle]);
+    this.pauseOverlay.setDepth(30);
+    this.pauseOverlay.setVisible(false);
   }
 }
