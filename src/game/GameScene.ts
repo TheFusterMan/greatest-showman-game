@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GameState } from './logic/GameState';
 import { AudioSystem } from './audio/AudioSystem';
 import { ParticleManager } from './vfx/ParticleManager';
+import { GAME_CONFIG } from './logic/rules';
 
 const PLAYER_SPEED = 300;
 const DASH_SPEED = 800;
@@ -276,7 +277,7 @@ export class GameScene extends Phaser.Scene {
         this.playerHint = null;
       }
 
-      const speed = this.isDashing ? DASH_SPEED : PLAYER_SPEED;
+      const speed = this.isDashing ? GAME_CONFIG.dashSpeed : GAME_CONFIG.playerSpeed;
       const len = Math.hypot(dx, dy);
       this.showman.x += (dx / len) * speed * seconds;
       this.showman.y += (dy / len) * speed * seconds;
@@ -425,8 +426,9 @@ export class GameScene extends Phaser.Scene {
     const y = Phaser.Math.Between(110, this.scale.height - 80);
 
     const isPhase2 = this.state.currentStage === 2;
-    const casualMultiplier = this.state.isCasualMode ? 0.7 : 1.0;
-    const speed = Math.round((isPhase2 ? Phaser.Math.Between(220, 280) : Phaser.Math.Between(130, 180)) * casualMultiplier);
+    const speedRange = isPhase2 ? GAME_CONFIG.criticSpeedPhase2 : GAME_CONFIG.criticSpeedPhase1;
+    const casualMultiplier = this.state.isCasualMode ? GAME_CONFIG.casualSpeedMultiplier : 1.0;
+    const speed = Math.round(Phaser.Math.Between(speedRange.min, speedRange.max) * casualMultiplier);
     const color = isPhase2 ? 0xf97316 : 0x475569;
 
     const criticObj = this.add.rectangle(x, y, 28, 28, color);

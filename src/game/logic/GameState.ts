@@ -1,8 +1,8 @@
 export type GamePhase = 'PLAYING' | 'PAUSED' | 'GAME_OVER';
+import { GAME_CONFIG } from './rules';
 
-export const BPM = 126;
-export const BEAT_TIME = 60 / BPM;
-export const BEAT_WINDOW = 0.14;
+export const BEAT_TIME = 60 / GAME_CONFIG.bpm;
+export const BEAT_WINDOW = GAME_CONFIG.beatWindow;;
 export const PHASE_2_TRIGGER_TIME = 7;
 export const PHASE_2_TARGET_SPOTLIGHTS = 5;
 
@@ -79,7 +79,7 @@ export class GameState {
         this.updateBestScore();
 
         let phaseSwitched = false;
-        if (this.spotlightsCaught >= PHASE_2_TARGET_SPOTLIGHTS && this.currentStage === 1) {
+        if (this.spotlightsCaught >= GAME_CONFIG.phase2TargetSpotlights && this.currentStage === 1) {
             this.currentStage = 2;
             phaseSwitched = true;
         }
