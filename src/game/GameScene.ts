@@ -1,128 +1,42 @@
 import Phaser from 'phaser';
+import { GameState } from './logic/GameState';
+import { AudioSystem } from './audio/AudioSystem';
+import { ParticleManager } from './vfx/ParticleManager';
 
 const PLAYER_SPEED = 300;
 const DASH_SPEED = 800;
-const BPM = 126;
-const BEAT_TIME = 60 / BPM;
-
-class RhythmAudio {
-  private static ctx: AudioContext | null = null;
-
-  static getCtx(): AudioContext {
-    if (!this.ctx) {
-      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
-    }
-    return this.ctx;
-  }
-
-  static kick() {
-    try {
-      const ctx = this.getCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.setValueAtTime(140, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(35, ctx.currentTime + 0.12);
-      gain.gain.setValueAtTime(0.25, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.12);
-    } catch {}
-  }
-
-  static tambourine() {
-    try {
-      const ctx = this.getCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(1200, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.08);
-      gain.gain.setValueAtTime(0.12, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.08);
-    } catch {}
-  }
-
-  static perfectChime() {
-    try {
-      const ctx = this.getCtx();
-      [587.33, 880.0, 1174.66].forEach((f, i) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(f, ctx.currentTime + i * 0.04);
-        gain.gain.setValueAtTime(0.15, ctx.currentTime + i * 0.04);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(ctx.currentTime + i * 0.04);
-        osc.stop(ctx.currentTime + 0.3);
-      });
-    } catch {}
-  }
-}
 
 interface Enemy {
   obj: Phaser.GameObjects.Rectangle;
   speed: number;
 }
 
-interface FlyingConfetti {
-  obj: Phaser.GameObjects.Rectangle;
-  vx: number;
-  vy: number;
-  life: number;
-  rotSpeed: number;
-}
-
-interface FloorConfetti {
-  obj: Phaser.GameObjects.Rectangle;
-  life: number;
-}
-
 export class GameScene extends Phaser.Scene {
+
+  private state!: GameState;
+  private particles!: ParticleManager;
+
   private showman!: Phaser.GameObjects.Rectangle;
   private rhythmRing!: Phaser.GameObjects.Arc;
   private spotlight!: Phaser.GameObjects.Arc;
+  private enemies: Enemy[] = [];
 
   private playerHint!: Phaser.GameObjects.Text | null;
   private enemyHint!: Phaser.GameObjects.Text | null;
   private spotlightPointer!: Phaser.GameObjects.Text | null;
 
-  private beatTimer = 0;
-  private beatCounter = 0;
-  private beatWindow = 0.14;
   private beatBars: Phaser.GameObjects.Rectangle[] = [];
-
-  private enemies: Enemy[] = [];
-  private flyingConfetti: FlyingConfetti[] = [];
-  private floorConfetti: FloorConfetti[] = [];
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private spaceKey!: Phaser.Input.Keyboard.Key;
-
-  private applause = 0;
-  private bestApplause = 0;
-  private act = 1;
-  private spotlightsCaught = 0;
-  private hype = 1;
   private isDashing = false;
   private dashTimer = 0;
-  private isGameOver = false;
 
   private applauseText!: Phaser.GameObjects.Text;
+  private hypeText!: Phaser.GameObjects.Text;
   private actText!: Phaser.GameObjects.Text;
   private rhythmFeedbackText!: Phaser.GameObjects.Text;
-  private hypeText!: Phaser.GameObjects.Text;
 
   constructor() {
     super('GameScene');
@@ -130,18 +44,12 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     const { width, height } = this.scale;
-    this.isGameOver = false;
-    this.applause = 0;
-    this.act = 1;
-    this.spotlightsCaught = 0;
-    this.hype = 1;
-    this.beatTimer = 0;
-    this.enemies = [];
-    this.flyingConfetti = [];
-    this.floorConfetti = [];
-    this.beatBars = [];
 
-    this.bestApplause = parseInt(localStorage.getItem('showman_best_applause') || '0', 10);
+    this.state = new GameState();
+    this.particles = new ParticleManager(this);
+    this.enemies = [];
+    this.beatBars = [];
+    this.isDashing = false;
 
     this.drawWoodenStage(width, height);
 
@@ -160,8 +68,7 @@ export class GameScene extends Phaser.Scene {
     this.showman.setDepth(1);
 
     this.rhythmRing = this.add.circle(this.showman.x, this.showman.y, 42, 0xfbbf24, 0);
-    this.rhythmRing.setStrokeStyle(2, 0xfbbf24, 0.8);
-    this.rhythmRing.setDepth(1);
+    this.rhythmRing.setStrokeStyle(2, 0xfbbf24, 0.8).setDepth(1);
 
     this.playerHint = this.add.text(this.showman.x, this.showman.y - 32, '[ WASD ] ШАГИ', {
       fontFamily: 'Georgia, serif',
@@ -178,6 +85,7 @@ export class GameScene extends Phaser.Scene {
       color: '#fef08a',
       fontStyle: 'bold',
     }).setDepth(5);
+
     this.hypeText = this.add.text(28, 56, 'СЕРИЯ: x1', {
       fontFamily: 'Georgia, serif',
       fontSize: '18px',
@@ -211,58 +119,8 @@ export class GameScene extends Phaser.Scene {
     this.spawnFirstCriticWithHint();
   }
 
-  private drawWoodenStage(width: number, height: number): void {
-    this.add.rectangle(width / 2, height / 2, width, height, 0x180509);
-    const stageGfx = this.add.graphics();
-    stageGfx.lineStyle(1, 0x2d0c14, 0.7);
-
-    for (let y = 0; y < height; y += 36) {
-      stageGfx.lineBetween(0, y, width, y);
-    }
-
-    this.add.rectangle(width / 2, height - 6, width, 12, 0x451a03);
-    for (let x = 30; x < width; x += 50) {
-      this.add.circle(x, height - 7, 4, 0xfbbf24, 0.9);
-    }
-  }
-
-  private createRhythmMetronome(width: number, height: number): void {
-    const centerY = height - 26;
-    this.add.rectangle(width / 2, centerY, 320, 16, 0x090204, 0.75).setStrokeStyle(1, 0x78350f).setDepth(5);
-    this.add.rectangle(width / 2, centerY, 6, 20, 0xfbbf24).setDepth(5);
-
-    const barLeft = this.add.rectangle(width / 2 - 150, centerY, 4, 14, 0xf59e0b).setDepth(5);
-    const barRight = this.add.rectangle(width / 2 + 150, centerY, 4, 14, 0xf59e0b).setDepth(5);
-    this.beatBars.push(barLeft, barRight);
-  }
-
-  private spawnFirstCriticWithHint(): void {
-    const x = this.scale.width - 120;
-    const y = this.scale.height / 2;
-    const criticObj = this.add.rectangle(x, y, 28, 28, 0x475569);
-    criticObj.setStrokeStyle(1, 0x94a3b8);
-    criticObj.setDepth(1);
-    this.enemies.push({ obj: criticObj, speed: 120 });
-
-    this.enemyHint = this.add.text(x, y - 34, '▼ [ ПРОБЕЛ В РИТМ ] РЫВОК!', {
-      fontFamily: 'Georgia, serif',
-      fontSize: '14px',
-      color: '#f43f5e',
-      fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(5);
-
-    this.tweens.add({
-      targets: this.enemyHint,
-      y: y - 40,
-      yoyo: true,
-      repeat: -1,
-      duration: 350,
-      ease: 'Sine.easeInOut',
-    });
-  }
-
   update(_time: number, delta: number): void {
-    if (this.isGameOver) {
+    if (this.state.phase === 'GAME_OVER') {
       if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
         this.scene.restart();
       }
@@ -271,39 +129,29 @@ export class GameScene extends Phaser.Scene {
 
     const seconds = delta / 1000;
 
-    this.handleRhythmPulse(seconds);
+    this.handleRhythm(seconds);
     this.handleMovement(seconds);
     this.updateCritics(seconds);
-    this.updateConfetti(seconds);
+    this.particles.update(seconds);
     this.checkSpotlightCollision();
   }
 
-  private handleRhythmPulse(seconds: number): void {
-    this.beatTimer += seconds;
-    const progress = (this.beatTimer % BEAT_TIME) / BEAT_TIME;
+  private handleRhythm(seconds: number): void {
+    const tick = this.state.updateBeat(seconds);
     const { width } = this.scale;
-    const offset = (1 - progress) * 150;
+    const offset = (1 - tick.progress) * 150;
     this.beatBars[0].x = width / 2 - offset;
     this.beatBars[1].x = width / 2 + offset;
 
-    if (this.beatTimer >= BEAT_TIME) {
-      this.beatTimer -= BEAT_TIME;
-      this.beatCounter++;
-
-      if (this.beatCounter % 2 === 0) {
-        RhythmAudio.kick();
-
+    if (tick.isBeat) {
+      if (tick.isKick) {
+        AudioSystem.kick();
         if (this.enemyHint) {
           this.enemyHint.setColor('#ffffff');
-          this.tweens.add({
-            targets: this.enemyHint,
-            scale: 1.15,
-            yoyo: true,
-            duration: 120,
-          });
+          this.tweens.add({ targets: this.enemyHint, scale: 1.15, yoyo: true, duration: 120 });
         }
       } else {
-        RhythmAudio.tambourine();
+        AudioSystem.tambourine();
         if (this.enemyHint) {
           this.enemyHint.setColor('#f43f5e');
         }
@@ -314,17 +162,12 @@ export class GameScene extends Phaser.Scene {
         targets: this.rhythmRing,
         scaleX: 0.9,
         scaleY: 0.9,
-        duration: BEAT_TIME * 800,
+        duration: 380,
         ease: 'Sine.easeOut',
       });
     }
 
     this.rhythmRing.setPosition(this.showman.x, this.showman.y);
-  }
-
-  private isHitOnBeat(): boolean {
-    const timeToBeat = Math.min(this.beatTimer, BEAT_TIME - this.beatTimer);
-    return timeToBeat <= this.beatWindow;
   }
 
   private handleMovement(seconds: number): void {
@@ -334,15 +177,15 @@ export class GameScene extends Phaser.Scene {
         this.enemyHint = null;
       }
 
-      const onBeat = this.isHitOnBeat();
+      const onBeat = this.state.isHitOnBeat();
 
       if (onBeat) {
         this.isDashing = true;
         this.dashTimer = 0.22;
-        RhythmAudio.perfectChime();
+        AudioSystem.perfectChime();
         this.showRhythmFeedback('ПРЕКРАСНО! ★', '#facc15');
-        this.applause += 100 * this.hype;
-        this.applauseText.setText(`ОВАЦИИ: ${this.applause.toLocaleString()}`);
+        this.state.registerHitOnBeatBonus();
+        this.updateScoreUI();
         this.cameras.main.shake(100, 0.015);
       } else {
         this.showRhythmFeedback('МИМО!', '#94a3b8');
@@ -351,7 +194,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.isDashing) {
       this.dashTimer -= seconds;
-      this.spawnDanceDust();
+      this.particles.spawnDanceDust(this.showman.x, this.showman.y);
       if (this.dashTimer <= 0) {
         this.isDashing = false;
       }
@@ -384,38 +227,6 @@ export class GameScene extends Phaser.Scene {
     this.showman.y = Phaser.Math.Clamp(this.showman.y, 76, this.scale.height - 35);
   }
 
-  private showRhythmFeedback(text: string, color: string): void {
-    this.rhythmFeedbackText.setText(text).setColor(color).setAlpha(1);
-    this.tweens.add({
-      targets: this.rhythmFeedbackText,
-      alpha: 0,
-      duration: 600,
-    });
-  }
-
-  private spawnDanceDust(): void {
-    const spark = this.add.rectangle(this.showman.x, this.showman.y, 8, 8, 0xfbbf24, 0.7);
-    spark.setDepth(0.3);
-    this.tweens.add({
-      targets: spark,
-      alpha: 0,
-      scale: 0.2,
-      duration: 200,
-      onComplete: () => spark.destroy(),
-    });
-  }
-
-  private spawnSingleCritic(): void {
-    const x = Math.random() > 0.5 ? 40 : this.scale.width - 40;
-    const y = Phaser.Math.Between(110, this.scale.height - 80);
-    const speed = Phaser.Math.Between(130, 180);
-
-    const criticObj = this.add.rectangle(x, y, 28, 28, 0x475569);
-    criticObj.setStrokeStyle(1, 0x94a3b8);
-    criticObj.setDepth(1);
-    this.enemies.push({ obj: criticObj, speed });
-  }
-
   private updateCritics(seconds: number): void {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
@@ -436,97 +247,22 @@ export class GameScene extends Phaser.Scene {
             this.enemyHint = null;
           }
 
-          this.createConfettiExplosion(e.obj.x, e.obj.y);
+          this.particles.createConfettiExplosion(e.obj.x, e.obj.y);
           e.obj.destroy();
           this.enemies.splice(i, 1);
 
-          this.applause += 150 * this.hype;
-          this.hype++;
-          if (this.hypeText) {
-            this.hypeText.setText(`СЕРИЯ: x${this.hype}`);
-          }
-          this.applauseText.setText(`ОВАЦИИ: ${this.applause.toLocaleString()}`);
+          this.state.registerCriticDefeated();
+          this.updateScoreUI();
           this.cameras.main.shake(120, 0.015);
 
           this.time.delayedCall(1600, () => {
-            if (!this.isGameOver) this.spawnSingleCritic();
+            if (this.state.phase === 'PLAYING') this.spawnSingleCritic();
           });
         } else {
-          this.gameOver();
+          this.state.triggerGameOver();
+          this.showGameOverUI();
           return;
         }
-      }
-    }
-  }
-
-  private createConfettiExplosion(x: number, y: number): void {
-    const colors = [0xfacc15, 0xe11d48, 0xffffff, 0xfbbf24, 0xf43f5e];
-
-    for (let r = 0; r < 5; r++) {
-      const ribbon = this.add.rectangle(
-          x + Phaser.Math.Between(-15, 15),
-          y + Phaser.Math.Between(-15, 15),
-          Phaser.Math.Between(22, 38),
-          Phaser.Math.Between(5, 8),
-          colors[Phaser.Math.Between(0, colors.length - 1)],
-          0.75
-      );
-      ribbon.setAngle(Phaser.Math.Between(0, 180));
-      ribbon.setDepth(0.05);
-
-      this.floorConfetti.push({ obj: ribbon, life: 14.0 });
-    }
-
-    for (let i = 0; i < 32; i++) {
-      const p = this.add.rectangle(
-          x,
-          y,
-          Phaser.Math.Between(5, 8),
-          Phaser.Math.Between(5, 8),
-          colors[Phaser.Math.Between(0, colors.length - 1)]
-      );
-      p.setDepth(1.5);
-
-      const angle = Math.random() * Math.PI * 2;
-      const speed = Phaser.Math.Between(150, 420);
-
-      this.flyingConfetti.push({
-        obj: p,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 0.8,
-        rotSpeed: Phaser.Math.Between(-12, 12),
-      });
-    }
-  }
-
-  private updateConfetti(seconds: number): void {
-    for (let i = this.flyingConfetti.length - 1; i >= 0; i--) {
-      const c = this.flyingConfetti[i];
-      c.life -= seconds * 1.4;
-      c.obj.x += c.vx * seconds;
-      c.obj.y += c.vy * seconds;
-      c.obj.rotation += c.rotSpeed * seconds;
-
-      if (c.life <= 0) {
-        c.obj.setDepth(0.05);
-        c.obj.setAlpha(0.65);
-        this.floorConfetti.push({ obj: c.obj, life: 12.0 });
-        this.flyingConfetti.splice(i, 1);
-      }
-    }
-
-    for (let j = this.floorConfetti.length - 1; j >= 0; j--) {
-      const fc = this.floorConfetti[j];
-      fc.life -= seconds;
-
-      if (fc.life < 2.0) {
-        fc.obj.alpha = fc.life / 2.0 * 0.65;
-      }
-
-      if (fc.life <= 0) {
-        fc.obj.destroy();
-        this.floorConfetti.splice(j, 1);
       }
     }
   }
@@ -534,11 +270,8 @@ export class GameScene extends Phaser.Scene {
   private checkSpotlightCollision(): void {
     const dist = Phaser.Math.Distance.Between(this.showman.x, this.showman.y, this.spotlight.x, this.spotlight.y);
     if (dist < 36) {
-      this.spotlightsCaught++;
-      this.applause += 300 * this.hype;
-      this.hype++;
-      this.hypeText.setText(`СЕРИЯ: x${this.hype}`);
-      this.applauseText.setText(`ОВАЦИИ: ${this.applause.toLocaleString()}`);
+      const isNewAct = this.state.registerSpotlightCaught();
+      this.updateScoreUI();
 
       if (this.spotlightPointer) {
         this.spotlightPointer.destroy();
@@ -546,27 +279,89 @@ export class GameScene extends Phaser.Scene {
       }
 
       this.cameras.main.flash(90, 254, 240, 138, false);
-
       this.spotlight.setPosition(
           Phaser.Math.Between(80, this.scale.width - 80),
           Phaser.Math.Between(110, this.scale.height - 80)
       );
 
-      if (this.enemies.length < 2 + this.act * 2) {
+      if (this.enemies.length < 2 + this.state.act * 2) {
         this.spawnSingleCritic();
       }
 
-      if (this.spotlightsCaught % 3 === 0) {
-        this.act++;
-        this.actText.setText(`— АКТ ${this.act} —`);
+      if (isNewAct) {
+        this.actText.setText(`— АКТ ${this.getRomanAct(this.state.act)} —`);
         this.cameras.main.flash(200, 217, 119, 6, false);
         this.spawnSingleCritic();
       }
     }
   }
 
-  private gameOver(): void {
-    this.isGameOver = true;
+  private updateScoreUI(): void {
+    this.applauseText.setText(`ОВАЦИИ: ${this.state.applause.toLocaleString()}`);
+    this.hypeText.setText(`СЕРИЯ: x${this.state.hype}`);
+  }
+
+  private getRomanAct(act: number): string {
+    const romans = ['I', 'II', 'III', 'IV', 'V', 'VI'];
+    return romans[act - 1] || act.toString();
+  }
+
+  private showRhythmFeedback(text: string, color: string): void {
+    this.rhythmFeedbackText.setText(text).setColor(color).setAlpha(1);
+    this.tweens.add({ targets: this.rhythmFeedbackText, alpha: 0, duration: 600 });
+  }
+
+  private drawWoodenStage(width: number, height: number): void {
+    this.add.rectangle(width / 2, height / 2, width, height, 0x180509);
+    const stageGfx = this.add.graphics();
+    stageGfx.lineStyle(1, 0x2d0c14, 0.7);
+
+    for (let y = 0; y < height; y += 36) {
+      stageGfx.lineBetween(0, y, width, y);
+    }
+
+    this.add.rectangle(width / 2, height - 6, width, 12, 0x451a03);
+    for (let x = 30; x < width; x += 50) {
+      this.add.circle(x, height - 7, 4, 0xfbbf24, 0.9);
+    }
+  }
+
+  private createRhythmMetronome(width: number, height: number): void {
+    const centerY = height - 26;
+    this.add.rectangle(width / 2, centerY, 320, 16, 0x090204, 0.75).setStrokeStyle(1, 0x78350f).setDepth(5);
+    this.add.rectangle(width / 2, centerY, 6, 20, 0xfbbf24).setDepth(5);
+
+    const barLeft = this.add.rectangle(width / 2 - 150, centerY, 4, 14, 0xf59e0b).setDepth(5);
+    const barRight = this.add.rectangle(width / 2 + 150, centerY, 4, 14, 0xf59e0b).setDepth(5);
+    this.beatBars.push(barLeft, barRight);
+  }
+
+  private spawnFirstCriticWithHint(): void {
+    const x = this.scale.width - 120;
+    const y = this.scale.height / 2;
+    const criticObj = this.add.rectangle(x, y, 28, 28, 0x475569);
+    criticObj.setStrokeStyle(1, 0x94a3b8).setDepth(1);
+    this.enemies.push({ obj: criticObj, speed: 120 });
+
+    this.enemyHint = this.add.text(x, y - 34, '▼ [ ПРОБЕЛ В РИТМ ] РЫВОК!', {
+      fontFamily: 'Georgia, serif',
+      fontSize: '14px',
+      color: '#f43f5e',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(5);
+  }
+
+  private spawnSingleCritic(): void {
+    const x = Math.random() > 0.5 ? 40 : this.scale.width - 40;
+    const y = Phaser.Math.Between(110, this.scale.height - 80);
+    const speed = Phaser.Math.Between(130, 180);
+
+    const criticObj = this.add.rectangle(x, y, 28, 28, 0x475569);
+    criticObj.setStrokeStyle(1, 0x94a3b8).setDepth(1);
+    this.enemies.push({ obj: criticObj, speed });
+  }
+
+  private showGameOverUI(): void {
     const { width, height } = this.scale;
 
     this.cameras.main.shake(300, 0.03);
@@ -579,7 +374,7 @@ export class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(21);
 
-    this.add.text(width / 2, height * 0.52, `ОВАЦИИ: ${this.applause}\nЗАВЕРШЕНО: АКТ ${this.act}`, {
+    this.add.text(width / 2, height * 0.52, `ОВАЦИИ: ${this.state.applause}\nЗАВЕРШЕНО: АКТ ${this.getRomanAct(this.state.act)}`, {
       fontFamily: 'Georgia, serif',
       fontSize: '22px',
       color: '#fef08a',
