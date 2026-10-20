@@ -146,6 +146,13 @@ export class GameScene extends Phaser.Scene {
     this.pauseKeyEsc = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
 
     this.createPauseOverlay(width, height);
+
+    this.time.delayedCall(8000, () => {
+      if (this.enemyHint) {
+        this.enemyHint.destroy();
+        this.enemyHint = null;
+      }
+    });
   }
 
   update(_time: number, delta: number): void {
@@ -292,19 +299,36 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateCritics(seconds: number): void {
-    for (let i = this.enemies.length - 1; i >= 0; i--) {
+    const criticCount = this.enemies.length;
+
+    for (let i = criticCount - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      const angle = Phaser.Math.Angle.Between(e.obj.x, e.obj.y, this.showman.x, this.showman.y);
-      e.obj.x += Math.cos(angle) * e.speed * seconds;
-      e.obj.y += Math.sin(angle) * e.speed * seconds;
+
+      for (let j = 0; j < criticCount; j++) {
+        if (i !== j) {
+          const other = this.enemies[j];
+          const distBetween = Phaser.Math.Distance.Between(e.obj.x, e.obj.y, other.obj.x, other.obj.y);
+          if (distBetween < 26 && distBetween > 0) {
+            e.obj.x += ((e.obj.x - other.obj.x) / distBetween) * 50 * seconds;
+            e.obj.y += ((e.obj.y - other.obj.y) / distBetween) * 50 * seconds;
+          }
+        }
+      }
+
+      const baseAngle = Phaser.Math.Angle.Between(e.obj.x, e.obj.y, this.showman.x, this.showman.y);
+      const flankOffset = Math.sin(this.time.now * 0.002 + i) * 0.25;
+      const moveAngle = baseAngle + flankOffset;
+
+      e.obj.x += Math.cos(moveAngle) * e.speed * seconds;
+      e.obj.y += Math.sin(moveAngle) * e.speed * seconds;
 
       if (i === 0 && this.enemyHint) {
         this.enemyHint.setPosition(e.obj.x, e.obj.y - 34);
       }
 
-      const dist = Phaser.Math.Distance.Between(this.showman.x, this.showman.y, e.obj.x, e.obj.y);
+      const distToPlayer = Phaser.Math.Distance.Between(this.showman.x, this.showman.y, e.obj.x, e.obj.y);
 
-      if (dist < 32) {
+      if (distToPlayer < 32) {
         if (this.isDashing) {
           if (this.enemyHint) {
             this.enemyHint.destroy();
