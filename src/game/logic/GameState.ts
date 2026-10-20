@@ -3,6 +3,7 @@ export type GamePhase = 'PLAYING' | 'PAUSED' | 'GAME_OVER';
 export const BPM = 126;
 export const BEAT_TIME = 60 / BPM;
 export const BEAT_WINDOW = 0.14;
+export const PHASE_2_TRIGGER_TIME = 7;
 
 export interface BeatTick {
     isBeat: boolean;
@@ -21,6 +22,9 @@ export class GameState {
     private beatTimer = 0;
     private beatCounter = 0;
 
+    public gameTime = 0;
+    public currentStage: 1 | 2 = 1;
+
     constructor() {
         this.bestApplause = parseInt(localStorage.getItem('showman_best_applause') || '0', 10);
     }
@@ -31,7 +35,15 @@ export class GameState {
         return this.phase === 'PAUSED';
     }
 
-    public updateBeat(seconds: number): BeatTick {
+    public updateBeat(seconds: number): BeatTick & { phaseSwitched: boolean } {
+        this.gameTime += seconds;
+
+        let phaseSwitched = false;
+        if (this.gameTime >= PHASE_2_TRIGGER_TIME && this.currentStage === 1) {
+            this.currentStage = 2;
+            phaseSwitched = true;
+        }
+
         this.beatTimer += seconds;
         const progress = (this.beatTimer % BEAT_TIME) / BEAT_TIME;
         let isBeat = false;
@@ -44,7 +56,7 @@ export class GameState {
             isKick = this.beatCounter % 2 === 0;
         }
 
-        return { isBeat, isKick, progress };
+        return { isBeat, isKick, progress, phaseSwitched };
     }
 
     public isHitOnBeat(): boolean {

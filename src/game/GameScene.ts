@@ -42,6 +42,8 @@ export class GameScene extends Phaser.Scene {
   private pauseKeyEsc!: Phaser.Input.Keyboard.Key;
   private pauseOverlay!: Phaser.GameObjects.Container;
 
+  private timerText!: Phaser.GameObjects.Text;
+
   constructor() {
     super('GameScene');
   }
@@ -104,6 +106,13 @@ export class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5, 0).setDepth(5);
 
+    this.timerText = this.add.text(width - 28, 24, 'ФАЗА 1 • 00:00', {
+      fontFamily: 'Georgia, serif',
+      fontSize: '20px',
+      color: '#fef08a',
+      fontStyle: 'bold',
+    }).setOrigin(1, 0).setDepth(5);
+
     this.rhythmFeedbackText = this.add.text(width / 2, height - 60, '', {
       fontFamily: 'Georgia, serif',
       fontSize: '20px',
@@ -158,7 +167,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleRhythm(seconds: number): void {
+    const totalSec = Math.floor(this.state.gameTime);
+    const mins = Math.floor(totalSec / 60).toString().padStart(2, '0');
+    const secs = (totalSec % 60).toString().padStart(2, '0');
+
+    if (this.state.currentStage === 2) {
+      this.timerText.setText(`ФАЗА 2 • ${mins}:${secs}`).setColor('#f97316');
+    } else {
+      this.timerText.setText(`ФАЗА 1 • ${mins}:${secs}`);
+    }
+
     const tick = this.state.updateBeat(seconds);
+
+    if (tick.phaseSwitched) {
+      this.triggerPhase2Alert();
+    }
+
     const { width } = this.scale;
     const offset = (1 - tick.progress) * 150;
     this.beatBars[0].x = width / 2 - offset;
@@ -305,7 +329,8 @@ export class GameScene extends Phaser.Scene {
           Phaser.Math.Between(110, this.scale.height - 80)
       );
 
-      if (this.enemies.length < 2 + this.state.act * 2) {
+      const maxEnemies = (2 + this.state.act * 2) * (this.state.currentStage === 2 ? 2 : 1);
+      if (this.enemies.length < maxEnemies) {
         this.spawnSingleCritic();
       }
 
@@ -375,10 +400,13 @@ export class GameScene extends Phaser.Scene {
   private spawnSingleCritic(): void {
     const x = Math.random() > 0.5 ? 40 : this.scale.width - 40;
     const y = Phaser.Math.Between(110, this.scale.height - 80);
-    const speed = Phaser.Math.Between(130, 180);
 
-    const criticObj = this.add.rectangle(x, y, 28, 28, 0x475569);
-    criticObj.setStrokeStyle(1, 0x94a3b8).setDepth(1);
+    const isPhase2 = this.state.currentStage === 2;
+    const speed = isPhase2 ? Phaser.Math.Between(220, 280) : Phaser.Math.Between(130, 180);
+    const color = isPhase2 ? 0xf97316 : 0x475569;
+
+    const criticObj = this.add.rectangle(x, y, 28, 28, color);
+    criticObj.setStrokeStyle(1, isPhase2 ? 0xfbbf24 : 0x94a3b8).setDepth(1);
     this.enemies.push({ obj: criticObj, speed });
   }
 
@@ -435,5 +463,31 @@ export class GameScene extends Phaser.Scene {
     this.pauseOverlay.add([bg, frame, title, subtitle]);
     this.pauseOverlay.setDepth(30);
     this.pauseOverlay.setVisible(false);
+  }
+
+  private triggerPhase2Alert(): void {
+    const { width, height } = this.scale;
+    this.cameras.main.flash(400, 249, 115, 22, false);
+    this.cameras.main.shake(200, 0.02);
+
+    this.spawnSingleCritic();
+    this.spawnSingleCritic();
+
+    const banner = this.add.text(width / 2, height / 2 - 40, '★ ФАЗА 2: АНШЛАГ! ★\nКРИТИКИ УСКОРЯЮТСЯ', {
+      fontFamily: 'Georgia, serif',
+      fontSize: '32px',
+      color: '#f97316',
+      fontStyle: 'bold',
+      align: 'center',
+    }).setOrigin(0.5).setDepth(25);
+
+    this.tweens.add({
+      targets: banner,
+      scaleX: 1.2,
+      scaleY: 1.2,
+      alpha: 0,
+      duration: 2500,
+      onComplete: () => banner.destroy(),
+    });
   }
 }
