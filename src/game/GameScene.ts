@@ -299,14 +299,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateCritics(seconds: number): void {
-    const criticCount = this.enemies.length;
-
-    for (let i = criticCount - 1; i >= 0; i--) {
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
+      if (!e || !e.obj) continue;
 
-      for (let j = 0; j < criticCount; j++) {
+      for (let j = 0; j < this.enemies.length; j++) {
         if (i !== j) {
           const other = this.enemies[j];
+          if (!other || !other.obj) continue;
+
           const distBetween = Phaser.Math.Distance.Between(e.obj.x, e.obj.y, other.obj.x, other.obj.y);
           if (distBetween < 26 && distBetween > 0) {
             e.obj.x += ((e.obj.x - other.obj.x) / distBetween) * 50 * seconds;
