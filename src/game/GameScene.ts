@@ -189,16 +189,12 @@ export class GameScene extends Phaser.Scene {
     const secs = (totalSec % 60).toString().padStart(2, '0');
 
     if (this.state.currentStage === 2) {
-      this.timerText.setText(`ФАЗА 2 • ${mins}:${secs}`).setColor('#f97316');
+      this.timerText.setText('ФАЗА 2 • АНШЛАГ!').setColor('#f97316');
     } else {
-      this.timerText.setText(`ФАЗА 1 • ${mins}:${secs}`);
+      this.timerText.setText(`ФАЗА 1 • СОФИТЫ: ${this.state.spotlightsCaught}/5`);
     }
 
     const tick = this.state.updateBeat(seconds);
-
-    if (tick.phaseSwitched) {
-      this.triggerPhase2Alert();
-    }
 
     const { width } = this.scale;
     const offset = (1 - tick.progress) * 150;
@@ -337,7 +333,12 @@ export class GameScene extends Phaser.Scene {
   private checkSpotlightCollision(): void {
     const dist = Phaser.Math.Distance.Between(this.showman.x, this.showman.y, this.spotlight.x, this.spotlight.y);
     if (dist < 36) {
-      const isNewAct = this.state.registerSpotlightCaught();
+      const result = this.state.registerSpotlightCaught();
+      this.updateScoreUI();
+
+      if (result.phaseSwitched) {
+        this.triggerPhase2Alert();
+      }
       this.updateScoreUI();
 
       if (this.spotlightPointer) {
@@ -356,7 +357,7 @@ export class GameScene extends Phaser.Scene {
         this.spawnSingleCritic();
       }
 
-      if (isNewAct) {
+      if (result.isNewAct) {
         this.actText.setText(`— АКТ ${this.getRomanAct(this.state.act)} —`);
         this.cameras.main.flash(200, 217, 119, 6, false);
         this.spawnSingleCritic();

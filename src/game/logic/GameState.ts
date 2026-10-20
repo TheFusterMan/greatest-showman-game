@@ -4,6 +4,7 @@ export const BPM = 126;
 export const BEAT_TIME = 60 / BPM;
 export const BEAT_WINDOW = 0.14;
 export const PHASE_2_TRIGGER_TIME = 7;
+export const PHASE_2_TARGET_SPOTLIGHTS = 5;
 
 export interface BeatTick {
     isBeat: boolean;
@@ -42,14 +43,8 @@ export class GameState {
         return this.phase === 'PAUSED';
     }
 
-    public updateBeat(seconds: number): BeatTick & { phaseSwitched: boolean } {
+    public updateBeat(seconds: number): BeatTick {
         this.gameTime += seconds;
-
-        let phaseSwitched = false;
-        if (this.gameTime >= PHASE_2_TRIGGER_TIME && this.currentStage === 1) {
-            this.currentStage = 2;
-            phaseSwitched = true;
-        }
 
         this.beatTimer += seconds;
         const progress = (this.beatTimer % BEAT_TIME) / BEAT_TIME;
@@ -63,7 +58,7 @@ export class GameState {
             isKick = this.beatCounter % 2 === 0;
         }
 
-        return { isBeat, isKick, progress, phaseSwitched };
+        return { isBeat, isKick, progress };
     }
 
     public isHitOnBeat(): boolean {
@@ -77,17 +72,24 @@ export class GameState {
         this.updateBestScore();
     }
 
-    public registerSpotlightCaught(): boolean {
+    public registerSpotlightCaught(): { isNewAct: boolean; phaseSwitched: boolean } {
         this.spotlightsCaught++;
         this.applause += 300 * this.hype;
         this.hype++;
         this.updateBestScore();
 
-        if (this.spotlightsCaught % 3 === 0) {
-            this.act++;
-            return true;
+        let phaseSwitched = false;
+        if (this.spotlightsCaught >= PHASE_2_TARGET_SPOTLIGHTS && this.currentStage === 1) {
+            this.currentStage = 2;
+            phaseSwitched = true;
         }
-        return false;
+
+        const isNewAct = this.spotlightsCaught % 3 === 0;
+        if (isNewAct) {
+            this.act++;
+        }
+
+        return { isNewAct, phaseSwitched };
     }
 
     public registerHitOnBeatBonus(): void {
