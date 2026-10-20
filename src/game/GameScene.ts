@@ -44,6 +44,9 @@ export class GameScene extends Phaser.Scene {
 
   private timerText!: Phaser.GameObjects.Text;
 
+  private keyC!: Phaser.Input.Keyboard.Key;
+  private modeText!: Phaser.GameObjects.Text;
+
   constructor() {
     super('GameScene');
   }
@@ -56,6 +59,13 @@ export class GameScene extends Phaser.Scene {
     this.enemies = [];
     this.beatBars = [];
     this.isDashing = false;
+    this.keyC = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.C);
+
+    this.modeText = this.add.text(28, height - 30, '[C] РЕЖИМ: ШОУ (ХАРДКОР)', {
+      fontFamily: 'Georgia, serif',
+      fontSize: '14px',
+      color: '#94a3b8',
+    }).setDepth(5);
 
     this.drawWoodenStage(width, height);
 
@@ -157,6 +167,13 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (Phaser.Input.Keyboard.JustDown(this.keyC)) {
+      const isCasual = this.state.toggleCasualMode();
+      this.modeText.setText(isCasual ? '[C] РЕЖИМ: РЕПЕТИЦИЯ (КАЗУАЛ)' : '[C] РЕЖИМ: ШОУ (ХАРДКОР)');
+      this.modeText.setColor(isCasual ? '#22c55e' : '#94a3b8');
+      this.showRhythmFeedback(isCasual ? 'РЕЖИМ РЕПЕТИЦИИ ВКЛЮЧЕН' : 'ХАРДКОР ВКЛЮЧЕН', isCasual ? '#22c55e' : '#facc15');
+    }
+
     const seconds = delta / 1000;
 
     this.handleRhythm(seconds);
@@ -224,14 +241,19 @@ export class GameScene extends Phaser.Scene {
 
       const onBeat = this.state.isHitOnBeat();
 
-      if (onBeat) {
+      if (onBeat || this.state.isCasualMode) {
         this.isDashing = true;
-        this.dashTimer = 0.22;
-        AudioSystem.perfectChime();
-        this.showRhythmFeedback('ПРЕКРАСНО! ★', '#facc15');
-        this.state.registerHitOnBeatBonus();
-        this.updateScoreUI();
-        this.cameras.main.shake(100, 0.015);
+        this.dashTimer = onBeat ? 0.22 : 0.18;
+
+        if (onBeat) {
+          AudioSystem.perfectChime();
+          this.showRhythmFeedback('ПРЕКРАСНО! ★', '#facc15');
+          this.state.registerHitOnBeatBonus();
+          this.updateScoreUI();
+          this.cameras.main.shake(100, 0.015);
+        } else {
+          this.showRhythmFeedback('БЕЗОПАСНЫЙ ШАГ', '#22c55e');
+        }
       } else {
         this.showRhythmFeedback('МИМО!', '#94a3b8');
       }
@@ -402,7 +424,8 @@ export class GameScene extends Phaser.Scene {
     const y = Phaser.Math.Between(110, this.scale.height - 80);
 
     const isPhase2 = this.state.currentStage === 2;
-    const speed = isPhase2 ? Phaser.Math.Between(220, 280) : Phaser.Math.Between(130, 180);
+    const casualMultiplier = this.state.isCasualMode ? 0.7 : 1.0;
+    const speed = Math.round((isPhase2 ? Phaser.Math.Between(220, 280) : Phaser.Math.Between(130, 180)) * casualMultiplier);
     const color = isPhase2 ? 0xf97316 : 0x475569;
 
     const criticObj = this.add.rectangle(x, y, 28, 28, color);

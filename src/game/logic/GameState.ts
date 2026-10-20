@@ -25,6 +25,13 @@ export class GameState {
     public gameTime = 0;
     public currentStage: 1 | 2 = 1;
 
+    public isCasualMode = false;
+
+    public toggleCasualMode(): boolean {
+        this.isCasualMode = !this.isCasualMode;
+        return this.isCasualMode;
+    }
+
     constructor() {
         this.bestApplause = parseInt(localStorage.getItem('showman_best_applause') || '0', 10);
     }
