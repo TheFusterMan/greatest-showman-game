@@ -1,17 +1,10 @@
 import Phaser from 'phaser';
 import { GameState } from './logic/GameState';
+import { CriticManager } from './entities/CriticManager';
 import { AudioSystem } from './audio/AudioSystem';
 import { ParticleManager } from './vfx/ParticleManager';
 import { UIManager } from './ui/UIManager';
 import { GAME_CONFIG } from './logic/rules';
-
-const PLAYER_SPEED = 300;
-const DASH_SPEED = 800;
-
-interface Enemy {
-  obj: Phaser.GameObjects.Rectangle;
-  speed: number;
-}
 
 export class GameScene extends Phaser.Scene {
 
@@ -22,10 +15,9 @@ export class GameScene extends Phaser.Scene {
   private showman!: Phaser.GameObjects.Rectangle;
   private rhythmRing!: Phaser.GameObjects.Arc;
   private spotlight!: Phaser.GameObjects.Arc;
-  private enemies: Enemy[] = [];
+  private critics!: CriticManager;
 
   private playerHint!: Phaser.GameObjects.Text | null;
-  private enemyHint!: Phaser.GameObjects.Text | null;
   private spotlightPointer!: Phaser.GameObjects.Text | null;
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -49,7 +41,8 @@ export class GameScene extends Phaser.Scene {
 
     this.state = new GameState();
     this.particles = new ParticleManager(this);
-    this.enemies = [];
+    this.critics = new CriticManager(this);
+    this.critics.spawnFirstCriticWithHint();
     this.isDashing = false;
     this.keyC = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.C);
 
@@ -88,17 +81,8 @@ export class GameScene extends Phaser.Scene {
     }) as any;
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-    this.spawnFirstCriticWithHint();
-
     this.pauseKeyP = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.P);
     this.pauseKeyEsc = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
-
-    this.time.delayedCall(8000, () => {
-      if (this.enemyHint) {
-        this.enemyHint.destroy();
-        this.enemyHint = null;
-      }
-    });
   }
 
   update(_time: number, delta: number): void {
@@ -145,16 +129,10 @@ export class GameScene extends Phaser.Scene {
     if (tick.isBeat) {
       if (tick.isKick) {
         AudioSystem.kick();
-        if (this.enemyHint) {
-          this.enemyHint.setColor('#ffffff');
-          this.tweens.add({ targets: this.enemyHint, scale: 1.15, yoyo: true, duration: 120 });
-        }
       } else {
         AudioSystem.tambourine();
-        if (this.enemyHint) {
-          this.enemyHint.setColor('#f43f5e');
-        }
       }
+      this.critics.onBeat(tick.isKick);
 
       this.rhythmRing.setScale(1.2);
       this.tweens.add({
@@ -171,10 +149,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleMovement(seconds: number): void {
     if (Phaser.Input.Keyboard.JustDown(this.spaceKey) && !this.isDashing) {
-      if (this.enemyHint) {
-        this.enemyHint.destroy();
-        this.enemyHint = null;
-      }
+      this.critics.dismissHint();
 
       const onBeat = this.state.isHitOnBeat();
 
@@ -232,60 +207,35 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateCritics(seconds: number): void {
-    for (let i = this.enemies.length - 1; i >= 0; i--) {
-      const e = this.enemies[i];
-      if (!e || !e.obj) continue;
+    // 1. Обновляем движение критиков и AI стаи
+    this.critics.update(seconds, this.showman.x, this.showman.y, this.time.now);
 
-      for (let j = 0; j < this.enemies.length; j++) {
-        if (i !== j) {
-          const other = this.enemies[j];
-          if (!other || !other.obj) continue;
+    // 2. Проверяем коллизию с игроком
+    const collision = this.critics.checkPlayerCollision(
+        this.showman.x,
+        this.showman.y,
+        this.isDashing
+    );
 
-          const distBetween = Phaser.Math.Distance.Between(e.obj.x, e.obj.y, other.obj.x, other.obj.y);
-          if (distBetween < 26 && distBetween > 0) {
-            e.obj.x += ((e.obj.x - other.obj.x) / distBetween) * 50 * seconds;
-            e.obj.y += ((e.obj.y - other.obj.y) / distBetween) * 50 * seconds;
-          }
+    // Случай 1: Игрок врезался без рывка -> Конец игры
+    if (collision.playerKilled) {
+      this.state.triggerGameOver();
+      this.ui.showGameOver(this.state.applause, this.getRomanAct(this.state.act));
+      return;
+    }
+
+    // Случай 2: Игрок сбил критика в рывке -> Овации и салют
+    if (collision.defeatedAt) {
+      this.particles.createConfettiExplosion(collision.defeatedAt.x, collision.defeatedAt.y);
+      this.state.registerCriticDefeated();
+      this.ui.updateScore(this.state.applause, this.state.hype);
+      this.cameras.main.shake(120, 0.015);
+
+      this.time.delayedCall(1600, () => {
+        if (this.state.phase === 'PLAYING') {
+          this.critics.spawnSingleCritic(this.state.currentStage === 2, this.state.isCasualMode);
         }
-      }
-
-      const baseAngle = Phaser.Math.Angle.Between(e.obj.x, e.obj.y, this.showman.x, this.showman.y);
-      const flankOffset = Math.sin(this.time.now * 0.002 + i) * 0.25;
-      const moveAngle = baseAngle + flankOffset;
-
-      e.obj.x += Math.cos(moveAngle) * e.speed * seconds;
-      e.obj.y += Math.sin(moveAngle) * e.speed * seconds;
-
-      if (i === 0 && this.enemyHint) {
-        this.enemyHint.setPosition(e.obj.x, e.obj.y - 34);
-      }
-
-      const distToPlayer = Phaser.Math.Distance.Between(this.showman.x, this.showman.y, e.obj.x, e.obj.y);
-
-      if (distToPlayer < 32) {
-        if (this.isDashing) {
-          if (this.enemyHint) {
-            this.enemyHint.destroy();
-            this.enemyHint = null;
-          }
-
-          this.particles.createConfettiExplosion(e.obj.x, e.obj.y);
-          e.obj.destroy();
-          this.enemies.splice(i, 1);
-
-          this.state.registerCriticDefeated();
-          this.ui.updateScore(this.state.applause, this.state.hype);
-          this.cameras.main.shake(120, 0.015);
-
-          this.time.delayedCall(1600, () => {
-            if (this.state.phase === 'PLAYING') this.spawnSingleCritic();
-          });
-        } else {
-          this.state.triggerGameOver();
-          this.ui.showGameOver(this.state.applause, this.getRomanAct(this.state.act));
-          return;
-        }
-      }
+      });
     }
   }
 
@@ -312,14 +262,14 @@ export class GameScene extends Phaser.Scene {
       );
 
       const maxEnemies = (2 + this.state.act * 2) * (this.state.currentStage === 2 ? 2 : 1);
-      if (this.enemies.length < maxEnemies) {
-        this.spawnSingleCritic();
+      if (this.critics.count < maxEnemies) {
+        this.critics.spawnSingleCritic(this.state.currentStage === 2, this.state.isCasualMode);
       }
 
       if (result.isNewAct) {
         this.ui.updateAct(this.getRomanAct(this.state.act));
         this.cameras.main.flash(200, 217, 119, 6, false);
-        this.spawnSingleCritic();
+        this.critics.spawnSingleCritic(this.state.currentStage === 2, this.state.isCasualMode);
       }
     }
   }
@@ -342,35 +292,5 @@ export class GameScene extends Phaser.Scene {
     for (let x = 30; x < width; x += 50) {
       this.add.circle(x, height - 7, 4, 0xfbbf24, 0.9);
     }
-  }
-
-  private spawnFirstCriticWithHint(): void {
-    const x = this.scale.width - 120;
-    const y = this.scale.height / 2;
-    const criticObj = this.add.rectangle(x, y, 28, 28, 0x475569);
-    criticObj.setStrokeStyle(1, 0x94a3b8).setDepth(1);
-    this.enemies.push({ obj: criticObj, speed: 120 });
-
-    this.enemyHint = this.add.text(x, y - 34, '▼ [ ПРОБЕЛ В РИТМ ] РЫВОК!', {
-      fontFamily: 'Georgia, serif',
-      fontSize: '14px',
-      color: '#f43f5e',
-      fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(5);
-  }
-
-  private spawnSingleCritic(): void {
-    const x = Math.random() > 0.5 ? 40 : this.scale.width - 40;
-    const y = Phaser.Math.Between(110, this.scale.height - 80);
-
-    const isPhase2 = this.state.currentStage === 2;
-    const speedRange = isPhase2 ? GAME_CONFIG.criticSpeedPhase2 : GAME_CONFIG.criticSpeedPhase1;
-    const casualMultiplier = this.state.isCasualMode ? GAME_CONFIG.casualSpeedMultiplier : 1.0;
-    const speed = Math.round(Phaser.Math.Between(speedRange.min, speedRange.max) * casualMultiplier);
-    const color = isPhase2 ? 0xf97316 : 0x475569;
-
-    const criticObj = this.add.rectangle(x, y, 28, 28, color);
-    criticObj.setStrokeStyle(1, isPhase2 ? 0xfbbf24 : 0x94a3b8).setDepth(1);
-    this.enemies.push({ obj: criticObj, speed });
   }
 }
