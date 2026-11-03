@@ -28,6 +28,9 @@ export class GameState {
 
     public isCasualMode = false;
 
+    public lives: number = GAME_CONFIG.maxLives;
+    public invulnerableTimer = 2.0;
+
     public toggleCasualMode(): boolean {
         this.isCasualMode = !this.isCasualMode;
         return this.isCasualMode;
@@ -95,6 +98,23 @@ export class GameState {
     public registerHitOnBeatBonus(): void {
         this.applause += 100 * this.hype;
         this.updateBestScore();
+    }
+
+    public takeDamage(): { tookDamage: boolean; survives: boolean; remainingLives: number } {
+        if (this.invulnerableTimer > 0) {
+            return { tookDamage: false, survives: true, remainingLives: this.lives };
+        }
+
+        this.lives--;
+        this.hype = 1; // Сброс серии
+        this.invulnerableTimer = 2.0; // 2 секунды неуязвимости
+
+        if (this.lives <= 0) {
+            this.triggerGameOver();
+            return { tookDamage: true, survives: false, remainingLives: 0 };
+        }
+
+        return { tookDamage: true, survives: true, remainingLives: this.lives };
     }
 
     public triggerGameOver(): void {

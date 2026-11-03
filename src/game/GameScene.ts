@@ -113,6 +113,13 @@ export class GameScene extends Phaser.Scene {
 
     const seconds = delta / 1000;
 
+    if (this.state.invulnerableTimer > 0) {
+      this.state.invulnerableTimer -= seconds;
+      this.showman.setAlpha(Math.sin(this.time.now * 0.03) > 0 ? 0.3 : 1);
+    } else {
+      this.showman.setAlpha(1);
+    }
+
     this.handleRhythm(seconds);
     this.handleMovement(seconds);
     this.updateCritics(seconds);
@@ -159,10 +166,12 @@ export class GameScene extends Phaser.Scene {
 
         if (onBeat) {
           AudioSystem.perfectChime();
-          this.ui.showRhythmFeedback('ПРЕКРАСНО! ★', '#facc15');
+          const bonus = 100 * this.state.hype;
+          this.ui.showRhythmFeedback(`РИТМ-ШАГ! +${bonus}`, '#facc15');
+          this.ui.showFloatingScore(this.showman.x, this.showman.y, bonus);
           this.state.registerHitOnBeatBonus();
           this.ui.updateScore(this.state.applause, this.state.hype);
-          this.cameras.main.shake(100, 0.015);
+          this.cameras.main.shake(80, 0.01);
         } else {
           this.ui.showRhythmFeedback('БЕЗОПАСНЫЙ ШАГ', '#22c55e');
         }
@@ -217,11 +226,24 @@ export class GameScene extends Phaser.Scene {
         this.isDashing
     );
 
-    // Случай 1: Игрок врезался без рывка -> Конец игры
-    if (collision.playerKilled) {
-      this.state.triggerGameOver();
-      this.ui.showGameOver(this.state.applause, this.getRomanAct(this.state.act));
-      return;
+  // Случай 1: Игрок столкнулся без рывка (вместо мгновенного GameOver теперь спасбросок)
+    if (collision.playerKilled && this.state.invulnerableTimer <= 0) {
+      const damageResult = this.state.takeDamage();
+
+      if (damageResult.tookDamage) {
+        this.ui.updateLives(damageResult.remainingLives);
+        this.ui.updateScore(this.state.applause, this.state.hype);
+
+        if (!damageResult.survives) {
+          this.ui.showGameOver(this.state.applause, this.getRomanAct(this.state.act));
+          return;
+        }
+
+        // Вспышка и тряска сработают строго ОДИН РАЗ в момент удара
+        this.cameras.main.flash(220, 225, 29, 72, false);
+        this.cameras.main.shake(120, 0.015);
+        this.ui.showRhythmFeedback('ОШИБКА! ЗАЛ НЕДОВОЛЕН', '#ef4444');
+      }
     }
 
     // Случай 2: Игрок сбил критика в рывке -> Овации и салют
@@ -255,7 +277,9 @@ export class GameScene extends Phaser.Scene {
         this.spotlightPointer = null;
       }
 
+      this.particles.createConfettiExplosion(this.spotlight.x, this.spotlight.y);
       this.cameras.main.flash(90, 254, 240, 138, false);
+
       this.spotlight.setPosition(
           Phaser.Math.Between(80, this.scale.width - 80),
           Phaser.Math.Between(110, this.scale.height - 80)

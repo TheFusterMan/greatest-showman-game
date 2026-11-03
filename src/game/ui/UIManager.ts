@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import {GAME_CONFIG} from "../logic/rules";
 
 export class UIManager {
     private applauseText: Phaser.GameObjects.Text;
@@ -10,6 +11,7 @@ export class UIManager {
 
     private beatBars: Phaser.GameObjects.Rectangle[] = [];
     private pauseOverlay: Phaser.GameObjects.Container;
+    private livesText: Phaser.GameObjects.Text;
 
     constructor(private scene: Phaser.Scene) {
         const { width, height } = scene.scale;
@@ -56,6 +58,13 @@ export class UIManager {
             color: '#facc15',
         }).setOrigin(0.5).setDepth(5);
 
+        this.livesText = scene.add.text(28, 88, 'ТЕРПЕНИЕ ЗАЛА: ★★★', {
+            fontFamily: 'Georgia, serif',
+            fontSize: '16px',
+            color: '#facc15',
+            fontStyle: 'bold',
+        }).setDepth(5);
+
         this.createRhythmMetronome(width, height);
         this.pauseOverlay = this.createPauseOverlay(width, height);
     }
@@ -87,6 +96,33 @@ export class UIManager {
         const offset = (1 - progress) * 150;
         this.beatBars[0].x = width / 2 - offset;
         this.beatBars[1].x = width / 2 + offset;
+    }
+
+    public updateLives(lives: number): void {
+        const stars = '★'.repeat(Math.max(0, lives)) + '☆'.repeat(Math.max(0, GAME_CONFIG.maxLives - lives));
+        this.livesText.setText(`ТЕРПЕНИЕ ЗАЛА: ${stars}`);
+        this.livesText.setColor(lives === 1 ? '#ef4444' : '#facc15');
+    }
+
+    public showFloatingScore(x: number, y: number, score: number): void {
+        const popup = this.scene.add.text(x, y - 20, `+${score}`, {
+            fontFamily: 'Georgia, serif',
+            fontSize: '20px',
+            fontStyle: 'bold',
+            color: '#fef08a',
+            stroke: '#000000',
+            strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(15);
+
+        this.scene.tweens.add({
+            targets: popup,
+            y: y - 55,
+            alpha: 0,
+            scale: 1.2,
+            duration: 700,
+            ease: 'Sine.easeOut',
+            onComplete: () => popup.destroy(),
+        });
     }
 
     public showRhythmFeedback(text: string, color: string): void {
