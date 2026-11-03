@@ -86,6 +86,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    const seconds = delta / 1000;
+
     if (
         Phaser.Input.Keyboard.JustDown(this.pauseKeyP) ||
         Phaser.Input.Keyboard.JustDown(this.pauseKeyEsc)
@@ -99,6 +101,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.state.phase === 'GAME_OVER') {
+      this.particles.update(seconds); // Конфетти продолжает красиво падать на пол
       if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
         this.scene.restart();
       }
@@ -110,8 +113,6 @@ export class GameScene extends Phaser.Scene {
       this.ui.updateMode(isCasual);
       this.ui.showRhythmFeedback(isCasual ? 'РЕЖИМ РЕПЕТИЦИИ ВКЛЮЧЕН' : 'ХАРДКОР ВКЛЮЧЕН', isCasual ? '#22c55e' : '#facc15');
     }
-
-    const seconds = delta / 1000;
 
     if (this.state.invulnerableTimer > 0) {
       this.state.invulnerableTimer -= seconds;
@@ -235,7 +236,23 @@ export class GameScene extends Phaser.Scene {
         this.ui.updateScore(this.state.applause, this.state.hype);
 
         if (!damageResult.survives) {
-          this.ui.showGameOver(this.state.applause, this.getRomanAct(this.state.act));
+          // 1. Тройной залп конфетти на месте персонажа
+          this.particles.createConfettiExplosion(this.showman.x, this.showman.y);
+          this.particles.createConfettiExplosion(this.showman.x - 12, this.showman.y + 8);
+          this.particles.createConfettiExplosion(this.showman.x + 12, this.showman.y - 8);
+
+          // 2. Скрываем фигурку артиста и ритм-кольцо
+          this.showman.setVisible(false);
+          this.rhythmRing.setVisible(false);
+
+          // 3. Яркая вспышка и сильная тряска сцены
+          this.cameras.main.flash(350, 255, 255, 255, false);
+          this.cameras.main.shake(300, 0.03);
+
+          // 4. Занавес опускается спустя 1 секунду полета конфетти
+          this.time.delayedCall(1000, () => {
+            this.ui.showGameOver(this.state.applause, this.getRomanAct(this.state.act));
+          });
           return;
         }
 
