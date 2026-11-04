@@ -30,6 +30,8 @@ export class GameScene extends Phaser.Scene {
   private pauseKeyEsc!: Phaser.Input.Keyboard.Key;
   private keyC!: Phaser.Input.Keyboard.Key;
 
+  private respawnTimer = 0;
+
   constructor() {
     super('GameScene');
   }
@@ -87,6 +89,16 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     const seconds = delta / 1000;
+
+    if (this.critics.count === 0) {
+      this.respawnTimer += seconds;
+      if (this.respawnTimer >= 1.5) {
+        this.critics.spawnSingleCritic(this.state.currentStage === 2, this.state.isCasualMode);
+        this.respawnTimer = 0;
+      }
+    } else {
+      this.respawnTimer = 0;
+    }
 
     if (
         Phaser.Input.Keyboard.JustDown(this.pauseKeyP) ||
@@ -167,11 +179,18 @@ export class GameScene extends Phaser.Scene {
 
         if (onBeat) {
           AudioSystem.perfectChime();
-          const bonus = 100 * this.state.hype;
-          this.ui.showRhythmFeedback(`РИТМ-ШАГ! +${bonus}`, '#facc15');
-          this.ui.showFloatingScore(this.showman.x, this.showman.y, bonus);
-          this.state.registerHitOnBeatBonus();
-          this.ui.updateScore(this.state.applause, this.state.hype);
+          const earned = this.state.registerHitOnBeatBonus();
+
+          if (earned) {
+            const bonus = 100 * this.state.hype;
+            this.ui.showRhythmFeedback(`РИТМ-ШАГ! +${bonus}`, '#facc15');
+            this.ui.showFloatingScore(this.showman.x, this.showman.y, bonus);
+            this.state.registerHitOnBeatBonus();
+            this.ui.updateScore(this.state.applause, this.state.hype);
+          } else {
+            this.ui.showRhythmFeedback('★ ИДИ К СОФИТУ! (ЛИМИТ ОВАЦИЙ) ★', '#fbbf24');
+          }
+
           this.cameras.main.shake(80, 0.01);
         } else {
           this.ui.showRhythmFeedback('БЕЗОПАСНЫЙ ШАГ', '#22c55e');
@@ -269,12 +288,6 @@ export class GameScene extends Phaser.Scene {
       this.state.registerCriticDefeated();
       this.ui.updateScore(this.state.applause, this.state.hype);
       this.cameras.main.shake(120, 0.015);
-
-      this.time.delayedCall(1600, () => {
-        if (this.state.phase === 'PLAYING') {
-          this.critics.spawnSingleCritic(this.state.currentStage === 2, this.state.isCasualMode);
-        }
-      });
     }
   }
 

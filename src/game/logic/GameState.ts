@@ -3,8 +3,6 @@ import { GAME_CONFIG } from './rules';
 
 export const BEAT_TIME = 60 / GAME_CONFIG.bpm;
 export const BEAT_WINDOW = GAME_CONFIG.beatWindow;;
-export const PHASE_2_TRIGGER_TIME = 7;
-export const PHASE_2_TARGET_SPOTLIGHTS = 5;
 
 export interface BeatTick {
     isBeat: boolean;
@@ -22,6 +20,8 @@ export class GameState {
 
     private beatTimer = 0;
     private beatCounter = 0;
+
+    public beatBonusQuota = 6;
 
     public gameTime = 0;
     public currentStage: 1 | 2 = 1;
@@ -79,6 +79,7 @@ export class GameState {
         this.spotlightsCaught++;
         this.applause += 300 * this.hype;
         this.hype++;
+        this.beatBonusQuota = 6;
         this.updateBestScore();
 
         let phaseSwitched = false;
@@ -95,9 +96,14 @@ export class GameState {
         return { isNewAct, phaseSwitched };
     }
 
-    public registerHitOnBeatBonus(): void {
+    public registerHitOnBeatBonus(): boolean {
+        if (this.beatBonusQuota <= 0) {
+            return false;
+        }
+        this.beatBonusQuota--;
         this.applause += 100 * this.hype;
         this.updateBestScore();
+        return true;
     }
 
     public takeDamage(): { tookDamage: boolean; survives: boolean; remainingLives: number } {
