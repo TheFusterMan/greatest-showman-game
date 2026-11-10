@@ -7,7 +7,7 @@ export const GAME_CONFIG = {
     criticSpeedPhase1: { min: 140, max: 200 },
     criticSpeedPhase2: { min: 250, max: 315 },
     invulnerabilityDuration: 1.8,
-    dashGraceDuration: 0.12,
+    dashGraceDuration: 0.3,
     casualSpeedMultiplier: 0.7,
     maxLives: 3,
 } as const;

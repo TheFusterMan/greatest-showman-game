@@ -221,7 +221,6 @@ export class GameScene extends Phaser.Scene {
           this.ui.showRhythmFeedback('БЕЗОПАСНЫЙ ШАГ', '#22c55e');
         }
       } else {
-        // Ошибка: кольцо вспыхивает красным, показывая где был нажат клик
         this.shrinkingRing.setStrokeStyle(2, 0xef4444, 0.9);
         const reason = evaluation.rating === 'РАНО' ? 'РАНО!' : 'ПОЗДНО!';
         this.ui.showRhythmFeedback(reason, '#ef4444');
