@@ -30,7 +30,11 @@ export class GameScene extends Phaser.Scene {
   private pauseKeyEsc!: Phaser.Input.Keyboard.Key;
   private keyC!: Phaser.Input.Keyboard.Key;
 
+  private shrinkingRing!: Phaser.GameObjects.Arc;
+
   private respawnTimer = 0;
+
+  private dashGraceTimer = 0;
 
   constructor() {
     super('GameScene');
@@ -53,26 +57,26 @@ export class GameScene extends Phaser.Scene {
     this.spotlight = this.add.circle(width * 0.78, height * 0.5, 30, 0xfacc15, 0.95);
     this.spotlight.setStrokeStyle(3, 0xffffff);
 
+// Замени создание spotlightPointer в create():
     this.spotlightPointer = this.add.text(this.spotlight.x, this.spotlight.y - 42, '★ К СВЕТУ! ★', {
-      fontFamily: 'Georgia, serif',
+      fontFamily: "'Jost', sans-serif",
       fontSize: '14px',
       color: '#fef08a',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+
+    // И просто УДАЛИ из create() создание playerHint:
+    // this.playerHint = this.add.text(... '[ WASD ] ШАГИ' ...);
 
     this.showman = this.add.rectangle(width * 0.25, height * 0.5, 32, 32, 0xd90429);
     this.showman.setStrokeStyle(2, 0xfbbf24);
     this.showman.setDepth(1);
 
-    this.rhythmRing = this.add.circle(this.showman.x, this.showman.y, 42, 0xfbbf24, 0);
-    this.rhythmRing.setStrokeStyle(2, 0xfbbf24, 0.8).setDepth(1);
+    this.rhythmRing = this.add.circle(this.showman.x, this.showman.y, 24, 0xfbbf24, 0.1);
+    this.rhythmRing.setStrokeStyle(2, 0xfbbf24, 0.5).setDepth(0.9);
 
-    this.playerHint = this.add.text(this.showman.x, this.showman.y - 32, '[ WASD ] ШАГИ', {
-      fontFamily: 'Georgia, serif',
-      fontSize: '14px',
-      color: '#fef08a',
-      fontStyle: 'bold',
-    }).setOrigin(0.5);
+    this.shrinkingRing = this.add.circle(this.showman.x, this.showman.y, 24, 0xffffff, 0);
+    this.shrinkingRing.setStrokeStyle(2, 0xffffff, 0.9).setDepth(0.9);
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys({
@@ -133,8 +137,8 @@ export class GameScene extends Phaser.Scene {
       this.showman.setAlpha(1);
     }
 
-    this.handleRhythm(seconds);
     this.handleMovement(seconds);
+    this.handleRhythm(seconds);
     this.updateCritics(seconds);
     this.particles.update(seconds);
     this.checkSpotlightCollision();
@@ -144,7 +148,10 @@ export class GameScene extends Phaser.Scene {
     this.ui.updatePhase(this.state.currentStage, this.state.spotlightsCaught);
 
     const tick = this.state.updateBeat(seconds);
-    this.ui.updateMetronome(tick.progress);
+
+    const scale = 2.4 - tick.progress * 1.4;
+    this.shrinkingRing.setScale(scale);
+    this.shrinkingRing.setAlpha(0.2 + tick.progress * 0.8);
 
     if (tick.isBeat) {
       if (tick.isKick) {
@@ -157,46 +164,66 @@ export class GameScene extends Phaser.Scene {
       this.rhythmRing.setScale(1.2);
       this.tweens.add({
         targets: this.rhythmRing,
-        scaleX: 0.9,
-        scaleY: 0.9,
-        duration: 380,
-        ease: 'Sine.easeOut',
+        strokeColor: 0xfbbf24,
+        strokeAlpha: 0.5,
+        duration: 180,
+      });
+
+      this.tweens.add({
+        targets: this.showman,
+        scaleX: 1.25,
+        scaleY: 0.8,
+        yoyo: true,
+        duration: 110,
+        ease: 'Quad.easeInOut',
       });
     }
 
     this.rhythmRing.setPosition(this.showman.x, this.showman.y);
+    this.shrinkingRing.setPosition(this.showman.x, this.showman.y);
   }
 
   private handleMovement(seconds: number): void {
     if (Phaser.Input.Keyboard.JustDown(this.spaceKey) && !this.isDashing) {
       this.critics.dismissHint();
 
-      const onBeat = this.state.isHitOnBeat();
+      const evaluation = this.state.evaluateBeat();
+      const onBeat = evaluation.hit;
 
       if (onBeat || this.state.isCasualMode) {
         this.isDashing = true;
-        this.dashTimer = onBeat ? 0.22 : 0.18;
+        this.dashGraceTimer = 0;
+        this.dashTimer = onBeat ? 0.20 : 0.16;
 
         if (onBeat) {
           AudioSystem.perfectChime();
-          const earned = this.state.registerHitOnBeatBonus();
+          const earned = this.state.registerHitOnBeatBonus(); // Ровно один вызов!
+          const bonus = 100 * this.state.hype;
 
-          if (earned) {
-            const bonus = 100 * this.state.hype;
-            this.ui.showRhythmFeedback(`РИТМ-ШАГ! +${bonus}`, '#facc15');
-            this.ui.showFloatingScore(this.showman.x, this.showman.y, bonus);
-            this.state.registerHitOnBeatBonus();
-            this.ui.updateScore(this.state.applause, this.state.hype);
+          // Цветовой отклик кольца и точная оценка
+          if (evaluation.rating === 'ОТЛИЧНО') {
+            this.shrinkingRing.setStrokeStyle(3, 0xfacc15, 1);
+            this.ui.showRhythmFeedback(`ОТЛИЧНО! +${bonus}`, '#facc15');
           } else {
-            this.ui.showRhythmFeedback('★ ИДИ К СОФИТУ! (ЛИМИТ ОВАЦИЙ) ★', '#fbbf24');
+            this.shrinkingRing.setStrokeStyle(3, 0x4ade80, 1);
+            this.ui.showRhythmFeedback(`ХОРОШО! +${bonus}`, '#4ade80');
           }
 
-          this.cameras.main.shake(80, 0.01);
+          if (earned) {
+            this.ui.showFloatingScore(this.showman.x, this.showman.y, bonus);
+            this.ui.updateScore(this.state.applause, this.state.hype);
+          } else {
+            this.ui.showRhythmFeedback('★ К СОФИТУ! ★', '#fbbf24');
+          }
+
+          this.cameras.main.shake(70, 0.01);
         } else {
           this.ui.showRhythmFeedback('БЕЗОПАСНЫЙ ШАГ', '#22c55e');
         }
       } else {
-        this.ui.showRhythmFeedback('МИМО!', '#94a3b8');
+        this.shrinkingRing.setStrokeStyle(2, 0xef4444, 0.9);
+        const reason = evaluation.rating === 'РАНО' ? 'РАНО!' : 'ПОЗДНО!';
+        this.ui.showRhythmFeedback(reason, '#ef4444');
       }
     }
 
@@ -205,7 +232,12 @@ export class GameScene extends Phaser.Scene {
       this.particles.spawnDanceDust(this.showman.x, this.showman.y);
       if (this.dashTimer <= 0) {
         this.isDashing = false;
+        this.dashGraceTimer = GAME_CONFIG.dashGraceDuration;
       }
+    }
+
+    if (this.dashGraceTimer > 0) {
+      this.dashGraceTimer -= seconds;
     }
 
     let dx = 0;
@@ -216,19 +248,10 @@ export class GameScene extends Phaser.Scene {
     if (this.cursors.down.isDown || this.wasd.down.isDown) dy += 1;
 
     if (dx !== 0 || dy !== 0) {
-      if (this.playerHint) {
-        this.playerHint.destroy();
-        this.playerHint = null;
-      }
-
       const speed = this.isDashing ? GAME_CONFIG.dashSpeed : GAME_CONFIG.playerSpeed;
       const len = Math.hypot(dx, dy);
       this.showman.x += (dx / len) * speed * seconds;
       this.showman.y += (dy / len) * speed * seconds;
-    }
-
-    if (this.playerHint) {
-      this.playerHint.setPosition(this.showman.x, this.showman.y - 32);
     }
 
     this.showman.x = Phaser.Math.Clamp(this.showman.x, 24, this.scale.width - 24);
@@ -240,10 +263,11 @@ export class GameScene extends Phaser.Scene {
     this.critics.update(seconds, this.showman.x, this.showman.y, this.time.now);
 
     // 2. Проверяем коллизию с игроком
+    const isLethal = this.isDashing || this.dashGraceTimer > 0;
     const collision = this.critics.checkPlayerCollision(
         this.showman.x,
         this.showman.y,
-        this.isDashing
+        isLethal
     );
 
   // Случай 1: Игрок столкнулся без рывка (вместо мгновенного GameOver теперь спасбросок)
@@ -300,13 +324,13 @@ export class GameScene extends Phaser.Scene {
       if (result.phaseSwitched) {
         this.ui.showPhase2Alert();
       }
-      this.ui.updateScore(this.state.applause, this.state.hype);
 
       if (this.spotlightPointer) {
         this.spotlightPointer.destroy();
         this.spotlightPointer = null;
       }
 
+      // Салют на месте взятого софита
       this.particles.createConfettiExplosion(this.spotlight.x, this.spotlight.y);
       this.cameras.main.flash(90, 254, 240, 138, false);
 
@@ -315,7 +339,8 @@ export class GameScene extends Phaser.Scene {
           Phaser.Math.Between(110, this.scale.height - 80)
       );
 
-      const maxEnemies = (2 + this.state.act * 2) * (this.state.currentStage === 2 ? 2 : 1);
+      // Жесткий лимит врагов: максимум 6 критиков на сцене
+      const maxEnemies = Math.min(6, 2 + this.state.act);
       if (this.critics.count < maxEnemies) {
         this.critics.spawnSingleCritic(this.state.currentStage === 2, this.state.isCasualMode);
       }
@@ -323,7 +348,6 @@ export class GameScene extends Phaser.Scene {
       if (result.isNewAct) {
         this.ui.updateAct(this.getRomanAct(this.state.act));
         this.cameras.main.flash(200, 217, 119, 6, false);
-        this.critics.spawnSingleCritic(this.state.currentStage === 2, this.state.isCasualMode);
       }
     }
   }
@@ -340,11 +364,6 @@ export class GameScene extends Phaser.Scene {
 
     for (let y = 0; y < height; y += 36) {
       stageGfx.lineBetween(0, y, width, y);
-    }
-
-    this.add.rectangle(width / 2, height - 6, width, 12, 0x451a03);
-    for (let x = 30; x < width; x += 50) {
-      this.add.circle(x, height - 7, 4, 0xfbbf24, 0.9);
     }
   }
 }
