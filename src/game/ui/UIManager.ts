@@ -3,7 +3,6 @@ import {GAME_CONFIG} from "../logic/rules";
 
 export class UIManager {
     private applauseText: Phaser.GameObjects.Text;
-    private hypeText: Phaser.GameObjects.Text;
     private actText: Phaser.GameObjects.Text;
     private timerText: Phaser.GameObjects.Text;
     private modeText: Phaser.GameObjects.Text;
@@ -17,17 +16,10 @@ export class UIManager {
         const { width, height } = scene.scale;
 
         // HUD тексты
-        this.applauseText = scene.add.text(28, 24, 'ОВАЦИИ: 0', {
+        this.applauseText = scene.add.text(28, 56, '0 ★  (x1)', {
             fontFamily: 'Georgia, serif',
-            fontSize: '24px',
+            fontSize: '20px',
             color: '#fef08a',
-            fontStyle: 'bold',
-        }).setDepth(5);
-
-        this.hypeText = scene.add.text(28, 56, 'СЕРИЯ: x1', {
-            fontFamily: 'Georgia, serif',
-            fontSize: '18px',
-            color: '#f43f5e',
             fontStyle: 'bold',
         }).setDepth(5);
 
@@ -38,9 +30,9 @@ export class UIManager {
             fontStyle: 'bold',
         }).setOrigin(0.5, 0).setDepth(5);
 
-        this.timerText = scene.add.text(width - 28, 24, 'ФАЗА 1 • СОФИТЫ: 0/5', {
+        this.timerText = scene.add.text(width - 28, 22, 'АКТ I • СОФИТЫ: 0/5', {
             fontFamily: 'Georgia, serif',
-            fontSize: '20px',
+            fontSize: '18px',
             color: '#fef08a',
             fontStyle: 'bold',
         }).setOrigin(1, 0).setDepth(5);
@@ -58,11 +50,8 @@ export class UIManager {
             color: '#facc15',
         }).setOrigin(0.5).setDepth(5);
 
-        this.livesText = scene.add.text(28, 88, 'ТЕРПЕНИЕ ЗАЛА: ★★★', {
-            fontFamily: 'Georgia, serif',
-            fontSize: '16px',
-            color: '#facc15',
-            fontStyle: 'bold',
+        this.livesText = scene.add.text(28, 20, '❤️❤️❤️', {
+            fontSize: '26px',
         }).setDepth(5);
 
         this.createRhythmMetronome(width, height);
@@ -70,19 +59,18 @@ export class UIManager {
     }
 
     public updateScore(applause: number, hype: number): void {
-        this.applauseText.setText(`ОВАЦИИ: ${applause.toLocaleString()}`);
-        this.hypeText.setText(`СЕРИЯ: x${hype}`);
+        this.applauseText.setText(`${applause.toLocaleString()} ★  (x${hype})`);
     }
 
     public updateAct(actRoman: string): void {
-        this.actText.setText(`— АКТ ${actRoman} —`);
+        this.timerText.setText(`АКТ ${actRoman} • СОФИТЫ: 0/5`);
     }
 
     public updatePhase(currentStage: number, spotlightsCaught: number): void {
         if (currentStage === 2) {
             this.timerText.setText('ФАЗА 2 • АНШЛАГ!').setColor('#f97316');
         } else {
-            this.timerText.setText(`ФАЗА 1 • СОФИТЫ: ${spotlightsCaught}/5`);
+            this.timerText.setText(`ФАЗА 1 • СОФИТЫ: ${spotlightsCaught}/5`).setColor('#fef08a');
         }
     }
 
@@ -99,9 +87,15 @@ export class UIManager {
     }
 
     public updateLives(lives: number): void {
-        const stars = '★'.repeat(Math.max(0, lives)) + '☆'.repeat(Math.max(0, GAME_CONFIG.maxLives - lives));
-        this.livesText.setText(`ТЕРПЕНИЕ ЗАЛА: ${stars}`);
-        this.livesText.setColor(lives === 1 ? '#ef4444' : '#facc15');
+        const hearts = '❤️'.repeat(Math.max(0, lives)) + '🖤'.repeat(Math.max(0, GAME_CONFIG.maxLives - lives));
+        this.livesText.setText(hearts);
+
+        this.scene.tweens.add({
+            targets: this.livesText,
+            scale: 1.2,
+            duration: 100,
+            yoyo: true,
+        });
     }
 
     public showFloatingScore(x: number, y: number, score: number): void {
