@@ -17,34 +17,34 @@ export class UIManager {
 
         // HUD тексты
         this.applauseText = scene.add.text(28, 56, '0 ★  (x1)', {
-            fontFamily: 'Georgia, serif',
-            fontSize: '20px',
+            fontFamily: "'Jost', sans-serif",
+            fontSize: '22px',
             color: '#fef08a',
             fontStyle: 'bold',
         }).setDepth(5);
 
         this.actText = scene.add.text(width / 2, 22, '— АКТ I —', {
-            fontFamily: 'Georgia, serif',
+            fontFamily: "'Jost', sans-serif",
             fontSize: '26px',
             color: '#fbbf24',
             fontStyle: 'bold',
         }).setOrigin(0.5, 0).setDepth(5);
 
         this.timerText = scene.add.text(width - 28, 22, 'АКТ I • СОФИТЫ: 0/5', {
-            fontFamily: 'Georgia, serif',
+            fontFamily: "'Jost', sans-serif",
             fontSize: '18px',
             color: '#fef08a',
             fontStyle: 'bold',
         }).setOrigin(1, 0).setDepth(5);
 
         this.modeText = scene.add.text(28, height - 30, '[C] РЕЖИМ: ШОУ (ХАРДКОР)', {
-            fontFamily: 'Georgia, serif',
+            fontFamily: "'Jost', sans-serif",
             fontSize: '14px',
             color: '#94a3b8',
         }).setDepth(5);
 
         this.rhythmFeedbackText = scene.add.text(width / 2, height - 60, '', {
-            fontFamily: 'Georgia, serif',
+            fontFamily: "'Jost', sans-serif",
             fontSize: '20px',
             fontStyle: 'bold',
             color: '#facc15',
@@ -100,7 +100,7 @@ export class UIManager {
 
     public showFloatingScore(x: number, y: number, score: number): void {
         const popup = this.scene.add.text(x, y - 20, `+${score}`, {
-            fontFamily: 'Georgia, serif',
+            fontFamily: "'Jost', sans-serif",
             fontSize: '20px',
             fontStyle: 'bold',
             color: '#fef08a',
@@ -131,7 +131,7 @@ export class UIManager {
     public showPhase2Alert(): void {
         const { width, height } = this.scene.scale;
         const banner = this.scene.add.text(width / 2, height / 2 - 40, '★ ФАЗА 2: АНШЛАГ! ★\nКРИТИКИ УСКОРЯЮТСЯ', {
-            fontFamily: 'Georgia, serif',
+            fontFamily: "'Jost', sans-serif",
             fontSize: '32px',
             color: '#f97316',
             fontStyle: 'bold',
@@ -153,14 +153,14 @@ export class UIManager {
         this.scene.add.rectangle(width / 2, height / 2, width, height, 0x110206, 0.9).setDepth(20);
 
         this.scene.add.text(width / 2, height * 0.35, 'ЗАНАВЕС ОПУСКАЕТСЯ', {
-            fontFamily: 'Georgia, serif',
-            fontSize: '56px',
+            fontFamily: "'Jost', sans-serif",
+            fontSize: '52px',
             color: '#e11d48',
             fontStyle: 'bold',
         }).setOrigin(0.5).setDepth(21);
 
         this.scene.add.text(width / 2, height * 0.52, `ОВАЦИИ: ${applause}\nЗАВЕРШЕНО: АКТ ${actRoman}`, {
-            fontFamily: 'Georgia, serif',
+            fontFamily: "'Jost', sans-serif",
             fontSize: '22px',
             color: '#fef08a',
             align: 'center',
@@ -168,8 +168,8 @@ export class UIManager {
         }).setOrigin(0.5).setDepth(21);
 
         this.scene.add.text(width / 2, height * 0.72, 'НАЖМИТЕ [ПРОБЕЛ] ЧТОБЫ ПОВТОРИТЬ ШОУ', {
-            fontFamily: 'Georgia, serif',
-            fontSize: '20px',
+            fontFamily: "'Jost', sans-serif",
+            fontSize: '18px',
             color: '#fbbf24',
             fontStyle: 'bold',
         }).setOrigin(0.5).setDepth(21);
@@ -191,14 +191,14 @@ export class UIManager {
         const frame = this.scene.add.rectangle(0, 0, 480, 160, 0x1f070e, 0.95).setStrokeStyle(2, 0xfbbf24);
 
         const title = this.scene.add.text(0, -30, '— АНТРАКТ —', {
-            fontFamily: 'Georgia, serif',
+            fontFamily: "'Jost', sans-serif",
             fontSize: '44px',
             color: '#fbbf24',
             fontStyle: 'bold',
         }).setOrigin(0.5);
 
         const subtitle = this.scene.add.text(0, 30, 'ШОУ НА ПАУЗЕ\nНажмите [P] или [ESC], чтобы продолжить', {
-            fontFamily: 'Georgia, serif',
+            fontFamily: "'Jost', sans-serif",
             fontSize: '18px',
             color: '#fef08a',
             align: 'center',
