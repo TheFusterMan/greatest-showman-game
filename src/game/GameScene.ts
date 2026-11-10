@@ -341,10 +341,5 @@ export class GameScene extends Phaser.Scene {
     for (let y = 0; y < height; y += 36) {
       stageGfx.lineBetween(0, y, width, y);
     }
-
-    this.add.rectangle(width / 2, height - 6, width, 12, 0x451a03);
-    for (let x = 30; x < width; x += 50) {
-      this.add.circle(x, height - 7, 4, 0xfbbf24, 0.9);
-    }
   }
 }
