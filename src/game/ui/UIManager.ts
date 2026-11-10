@@ -54,7 +54,6 @@ export class UIManager {
             fontSize: '26px',
         }).setDepth(5);
 
-        this.createRhythmMetronome(width, height);
         this.pauseOverlay = this.createPauseOverlay(width, height);
     }
 
@@ -77,13 +76,6 @@ export class UIManager {
     public updateMode(isCasual: boolean): void {
         this.modeText.setText(isCasual ? '[C] РЕЖИМ: РЕПЕТИЦИЯ (КАЗУАЛ)' : '[C] РЕЖИМ: ШОУ (ХАРДКОР)');
         this.modeText.setColor(isCasual ? '#22c55e' : '#94a3b8');
-    }
-
-    public updateMetronome(progress: number): void {
-        const { width } = this.scene.scale;
-        const offset = (1 - progress) * 150;
-        this.beatBars[0].x = width / 2 - offset;
-        this.beatBars[1].x = width / 2 + offset;
     }
 
     public updateLives(lives: number): void {
@@ -173,16 +165,6 @@ export class UIManager {
             color: '#fbbf24',
             fontStyle: 'bold',
         }).setOrigin(0.5).setDepth(21);
-    }
-
-    private createRhythmMetronome(width: number, height: number): void {
-        const centerY = height - 26;
-        this.scene.add.rectangle(width / 2, centerY, 320, 16, 0x090204, 0.75).setStrokeStyle(1, 0x78350f).setDepth(5);
-        this.scene.add.rectangle(width / 2, centerY, 6, 20, 0xfbbf24).setDepth(5);
-
-        const barLeft = this.scene.add.rectangle(width / 2 - 150, centerY, 4, 14, 0xf59e0b).setDepth(5);
-        const barRight = this.scene.add.rectangle(width / 2 + 150, centerY, 4, 14, 0xf59e0b).setDepth(5);
-        this.beatBars.push(barLeft, barRight);
     }
 
     private createPauseOverlay(width: number, height: number): Phaser.GameObjects.Container {

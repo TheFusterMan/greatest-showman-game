@@ -1,9 +1,6 @@
 export type GamePhase = 'PLAYING' | 'PAUSED' | 'GAME_OVER';
 import { GAME_CONFIG } from './rules';
 
-export const BEAT_TIME = 60 / GAME_CONFIG.bpm;
-export const BEAT_WINDOW = GAME_CONFIG.beatWindow;;
-
 export interface BeatTick {
     isBeat: boolean;
     isKick: boolean;
@@ -46,27 +43,58 @@ export class GameState {
         return this.phase === 'PAUSED';
     }
 
+    public getCurrentBpm(): number {
+        const minBpm = (GAME_CONFIG as any).bpmRange?.min ?? (GAME_CONFIG as any).bpm ?? 100;
+        const maxBpm = (GAME_CONFIG as any).bpmRange?.max ?? 116;
+        const factor = Math.min(1, (this.hype - 1) / 7);
+        return Math.round(minBpm + factor * (maxBpm - minBpm));
+    }
+
+    public getCurrentBeatWindow(): number {
+        const range = (GAME_CONFIG as any).beatWindowRange ?? { fair: 0.085, strict: 0.060 };
+        const fair = range.fair ?? range.wide ?? 0.085;
+        const strict = range.strict ?? 0.060;
+        const factor = Math.min(1, (this.hype - 1) / 7);
+        return fair - factor * (fair - strict);
+    }
+
+    public evaluateBeat(): { hit: boolean; rating: 'ОТЛИЧНО' | 'ХОРОШО' | 'РАНО' | 'ПОЗДНО' } {
+        const beatTime = 60 / this.getCurrentBpm();
+        const window = this.getCurrentBeatWindow();
+
+        let diff = this.beatTimer;
+        if (diff > beatTime / 2) {
+            diff = diff - beatTime;
+        }
+
+        const absDiff = Math.abs(diff);
+
+        if (absDiff <= window * 0.5) {
+            return { hit: true, rating: 'ОТЛИЧНО' };
+        } else if (absDiff <= window) {
+            return { hit: true, rating: 'ХОРОШО' };
+        } else {
+            return { hit: false, rating: diff < 0 ? 'РАНО' : 'ПОЗДНО' };
+        }
+    }
+
     public updateBeat(seconds: number): BeatTick {
         this.gameTime += seconds;
 
+        const beatTime = 60 / this.getCurrentBpm();
         this.beatTimer += seconds;
-        const progress = (this.beatTimer % BEAT_TIME) / BEAT_TIME;
+        const progress = Math.min(1, this.beatTimer / beatTime);
         let isBeat = false;
         let isKick = false;
 
-        if (this.beatTimer >= BEAT_TIME) {
-            this.beatTimer -= BEAT_TIME;
+        if (this.beatTimer >= beatTime) {
+            this.beatTimer -= beatTime;
             this.beatCounter++;
             isBeat = true;
             isKick = this.beatCounter % 2 === 0;
         }
 
         return { isBeat, isKick, progress };
-    }
-
-    public isHitOnBeat(): boolean {
-        const timeToBeat = Math.min(this.beatTimer, BEAT_TIME - this.beatTimer);
-        return timeToBeat <= BEAT_WINDOW;
     }
 
     public registerCriticDefeated(): void {
@@ -112,8 +140,8 @@ export class GameState {
         }
 
         this.lives--;
-        this.hype = 1; // Сброс серии
-        this.invulnerableTimer = 2.0; // 2 секунды неуязвимости
+        this.hype = 1;
+        this.invulnerableTimer = GAME_CONFIG.invulnerabilityDuration;
 
         if (this.lives <= 0) {
             this.triggerGameOver();
