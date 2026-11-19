@@ -61,4 +61,59 @@ export class AudioSystem {
             });
         } catch {}
     }
+
+    // Звук взятия бонуса (восходящий мажорный арпеджио)
+    static bonusChime(): void {
+        try {
+            const ctx = this.getCtx();
+            [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.05);
+                gain.gain.setValueAtTime(0.18, ctx.currentTime + i * 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.05 + 0.25);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(ctx.currentTime + i * 0.05);
+                osc.stop(ctx.currentTime + i * 0.05 + 0.25);
+            });
+        } catch {}
+    }
+
+    // Звук глубокого слоу-мо
+    static slowMoSound(): void {
+        try {
+            const ctx = this.getCtx();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(320, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(70, ctx.currentTime + 0.45);
+            gain.gain.setValueAtTime(0.28, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.45);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.45);
+        } catch {}
+    }
+
+    // Звук ударной волны аплодисментов
+    static shockwaveSound(): void {
+        try {
+            const ctx = this.getCtx();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(180, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(45, ctx.currentTime + 0.3);
+            gain.gain.setValueAtTime(0.35, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.35);
+        } catch {}
+    }
 }

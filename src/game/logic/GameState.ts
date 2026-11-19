@@ -19,14 +19,19 @@ export class GameState {
     private beatCounter = 0;
 
     public beatBonusQuota = 6;
-
     public gameTime = 0;
     public currentStage: 1 | 2 = 1;
 
     public isCasualMode = false;
-
     public lives: number = GAME_CONFIG.maxLives;
     public invulnerableTimer = 2.0;
+
+    // Таймер бонуса слоу-мо
+    public slowMoTimer = 0;
+
+    public get isSlowMo(): boolean {
+        return this.slowMoTimer > 0;
+    }
 
     public toggleCasualMode(): boolean {
         this.isCasualMode = !this.isCasualMode;
@@ -44,16 +49,15 @@ export class GameState {
     }
 
     public getCurrentBpm(): number {
-        const minBpm = (GAME_CONFIG as any).bpmRange?.min ?? (GAME_CONFIG as any).bpm ?? 100;
-        const maxBpm = (GAME_CONFIG as any).bpmRange?.max ?? 116;
+        const minBpm = GAME_CONFIG.bpmRange.min;
+        const maxBpm = GAME_CONFIG.bpmRange.max;
         const factor = Math.min(1, (this.hype - 1) / 7);
         return Math.round(minBpm + factor * (maxBpm - minBpm));
     }
 
     public getCurrentBeatWindow(): number {
-        const range = (GAME_CONFIG as any).beatWindowRange ?? { fair: 0.085, strict: 0.060 };
-        const fair = range.fair ?? range.wide ?? 0.085;
-        const strict = range.strict ?? 0.060;
+        const fair = GAME_CONFIG.beatWindowRange.fair;
+        const strict = GAME_CONFIG.beatWindowRange.strict;
         const factor = Math.min(1, (this.hype - 1) / 7);
         return fair - factor * (fair - strict);
     }
@@ -63,23 +67,21 @@ export class GameState {
         const window = this.getCurrentBeatWindow();
 
         let diff = this.beatTimer;
-        if (diff > beatTime / 2) {
-            diff = diff - beatTime;
-        }
+        if (diff > beatTime / 2) diff = diff - beatTime;
 
         const absDiff = Math.abs(diff);
 
-        if (absDiff <= window * 0.5) {
-            return { hit: true, rating: 'ОТЛИЧНО' };
-        } else if (absDiff <= window) {
-            return { hit: true, rating: 'ХОРОШО' };
-        } else {
-            return { hit: false, rating: diff < 0 ? 'РАНО' : 'ПОЗДНО' };
-        }
+        if (absDiff <= window * 0.5) return { hit: true, rating: 'ОТЛИЧНО' };
+        else if (absDiff <= window) return { hit: true, rating: 'ХОРОШО' };
+        else return { hit: false, rating: diff < 0 ? 'РАНО' : 'ПОЗДНО' };
     }
 
     public updateBeat(seconds: number): BeatTick {
         this.gameTime += seconds;
+
+        if (this.slowMoTimer > 0) {
+            this.slowMoTimer = Math.max(0, this.slowMoTimer - seconds);
+        }
 
         const beatTime = 60 / this.getCurrentBpm();
         this.beatTimer += seconds;
@@ -95,6 +97,18 @@ export class GameState {
         }
 
         return { isBeat, isKick, progress };
+    }
+
+    public activateSlowMo(): void {
+        this.slowMoTimer = GAME_CONFIG.slowMoDuration;
+    }
+
+    public heal(amount = 1): boolean {
+        if (this.lives < GAME_CONFIG.maxLives) {
+            this.lives = Math.min(GAME_CONFIG.maxLives, this.lives + amount);
+            return true;
+        }
+        return false;
     }
 
     public registerCriticDefeated(): void {
@@ -117,17 +131,13 @@ export class GameState {
         }
 
         const isNewAct = this.spotlightsCaught % 3 === 0;
-        if (isNewAct) {
-            this.act++;
-        }
+        if (isNewAct) this.act++;
 
         return { isNewAct, phaseSwitched };
     }
 
     public registerHitOnBeatBonus(): boolean {
-        if (this.beatBonusQuota <= 0) {
-            return false;
-        }
+        if (this.beatBonusQuota <= 0) return false;
         this.beatBonusQuota--;
         this.applause += 100 * this.hype;
         this.updateBestScore();

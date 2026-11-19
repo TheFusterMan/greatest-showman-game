@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import {GAME_CONFIG} from "../logic/rules";
+import { GAME_CONFIG } from '../logic/rules';
 
 export class UIManager {
     private applauseText: Phaser.GameObjects.Text;
@@ -7,15 +7,14 @@ export class UIManager {
     private timerText: Phaser.GameObjects.Text;
     private modeText: Phaser.GameObjects.Text;
     private rhythmFeedbackText: Phaser.GameObjects.Text;
+    private slowMoBanner: Phaser.GameObjects.Text;
 
-    private beatBars: Phaser.GameObjects.Rectangle[] = [];
     private pauseOverlay: Phaser.GameObjects.Container;
     private livesText: Phaser.GameObjects.Text;
 
     constructor(private scene: Phaser.Scene) {
         const { width, height } = scene.scale;
 
-        // HUD тексты
         this.applauseText = scene.add.text(28, 56, '0 ★  (x1)', {
             fontFamily: "'Jost', sans-serif",
             fontSize: '22px',
@@ -23,6 +22,7 @@ export class UIManager {
             fontStyle: 'bold',
         }).setDepth(5);
 
+        // Текст Акта строго по центру
         this.actText = scene.add.text(width / 2, 22, '— АКТ I —', {
             fontFamily: "'Jost', sans-serif",
             fontSize: '26px',
@@ -30,14 +30,21 @@ export class UIManager {
             fontStyle: 'bold',
         }).setOrigin(0.5, 0).setDepth(5);
 
-        this.timerText = scene.add.text(width - 28, 22, 'АКТ I • СОФИТЫ: 0/5', {
+        this.timerText = scene.add.text(width - 28, 22, 'ФАЗА 1 • СОФИТЫ: 0/5', {
             fontFamily: "'Jost', sans-serif",
             fontSize: '18px',
             color: '#fef08a',
             fontStyle: 'bold',
         }).setOrigin(1, 0).setDepth(5);
 
-        this.modeText = scene.add.text(28, height - 30, '[C] РЕЖИМ: ШОУ (ХАРДКОР)', {
+        this.slowMoBanner = scene.add.text(width / 2, 60, '', {
+            fontFamily: "'Jost', sans-serif",
+            fontSize: '16px',
+            color: '#38bdf8',
+            fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(5);
+
+        this.modeText = scene.add.text(28, height - 30, '[C] РЕЖИМ: ШОУ (СТАНДАРТ)', {
             fontFamily: "'Jost', sans-serif",
             fontSize: '14px',
             color: '#94a3b8',
@@ -61,20 +68,29 @@ export class UIManager {
         this.applauseText.setText(`${applause.toLocaleString()} ★  (x${hype})`);
     }
 
+    // Фикс: обновляет заголовок Акта по центру!
     public updateAct(actRoman: string): void {
-        this.timerText.setText(`АКТ ${actRoman} • СОФИТЫ: 0/5`);
+        this.actText.setText(`— АКТ ${actRoman} —`);
     }
 
     public updatePhase(currentStage: number, spotlightsCaught: number): void {
         if (currentStage === 2) {
             this.timerText.setText('ФАЗА 2 • АНШЛАГ!').setColor('#f97316');
         } else {
-            this.timerText.setText(`ФАЗА 1 • СОФИТЫ: ${spotlightsCaught}/5`).setColor('#fef08a');
+            this.timerText.setText(`ФАЗА 1 • СОФИТЫ: ${spotlightsCaught}/${GAME_CONFIG.phase2TargetSpotlights}`).setColor('#fef08a');
+        }
+    }
+
+    public updateSlowMo(secondsRemaining: number): void {
+        if (secondsRemaining > 0) {
+            this.slowMoBanner.setText(`⌛ ЗАМЕДЛЕНИЕ: ${secondsRemaining.toFixed(1)}с`);
+        } else {
+            this.slowMoBanner.setText('');
         }
     }
 
     public updateMode(isCasual: boolean): void {
-        this.modeText.setText(isCasual ? '[C] РЕЖИМ: РЕПЕТИЦИЯ (КАЗУАЛ)' : '[C] РЕЖИМ: ШОУ (ХАРДКОР)');
+        this.modeText.setText(isCasual ? '[C] РЕЖИМ: РЕПЕТИЦИЯ (КАЗУАЛ)' : '[C] РЕЖИМ: ШОУ (СТАНДАРТ)');
         this.modeText.setColor(isCasual ? '#22c55e' : '#94a3b8');
     }
 
@@ -84,8 +100,8 @@ export class UIManager {
 
         this.scene.tweens.add({
             targets: this.livesText,
-            scale: 1.2,
-            duration: 100,
+            scale: 1.25,
+            duration: 120,
             yoyo: true,
         });
     }
@@ -122,12 +138,14 @@ export class UIManager {
 
     public showPhase2Alert(): void {
         const { width, height } = this.scene.scale;
-        const banner = this.scene.add.text(width / 2, height / 2 - 40, '★ ФАЗА 2: АНШЛАГ! ★\nКРИТИКИ УСКОРЯЮТСЯ', {
+        const banner = this.scene.add.text(width / 2, height / 2 - 40, '★ ФАЗА 2: АНШЛАГ! ★\nКРИТИКИ НАСТУПАЮТ', {
             fontFamily: "'Jost', sans-serif",
             fontSize: '32px',
             color: '#f97316',
             fontStyle: 'bold',
             align: 'center',
+            stroke: '#000000',
+            strokeThickness: 4,
         }).setOrigin(0.5).setDepth(25);
 
         this.scene.tweens.add({
@@ -146,7 +164,7 @@ export class UIManager {
 
         this.scene.add.text(width / 2, height * 0.35, 'ЗАНАВЕС ОПУСКАЕТСЯ', {
             fontFamily: "'Jost', sans-serif",
-            fontSize: '52px',
+            fontSize: '50px',
             color: '#e11d48',
             fontStyle: 'bold',
         }).setOrigin(0.5).setDepth(21);
