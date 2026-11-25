@@ -38,6 +38,11 @@ export class GameScene extends Phaser.Scene {
   private respawnTimer = 0;
   private dashGraceTimer = 0;
 
+  private ringFeedbackTimer = 0;
+  private wasInWindow = false;
+  private wasLethal = false;
+  private canRestart = false; // Чтобы Пробел в секунду смерти не сбрасывал экран раньше GameOver
+
   // Виньетка сапфирового слоу-мо
   private slowMoVignette!: Phaser.GameObjects.Rectangle;
 
@@ -81,11 +86,20 @@ export class GameScene extends Phaser.Scene {
     this.showman.setStrokeStyle(2, 0xfbbf24);
     this.showman.setDepth(2);
 
-    this.rhythmRing = this.add.circle(this.showman.x, this.showman.y, 28, 0xfbbf24, 0.1);
-    this.rhythmRing.setStrokeStyle(2, 0xfbbf24, 0.5).setDepth(1.9);
+  this.rhythmRing = this.add.circle(this.showman.x, this.showman.y, 36, 0xfbbf24, 0.08);
+  this.rhythmRing.setStrokeStyle(2, 0xfbbf24, 0.45).setDepth(1.9);
 
-    this.shrinkingRing = this.add.circle(this.showman.x, this.showman.y, 28, 0xffffff, 0);
-    this.shrinkingRing.setStrokeStyle(2, 0xffffff, 0.9).setDepth(1.9);
+  this.shrinkingRing = this.add.circle(this.showman.x, this.showman.y, 36, 0xffffff, 0);
+  this.shrinkingRing.setStrokeStyle(2, 0xffffff, 0.85).setDepth(1.9);
+
+  this.canRestart = false;
+  this.input.keyboard!.addCapture([
+      Phaser.Input.Keyboard.KeyCodes.SPACE,
+      Phaser.Input.Keyboard.KeyCodes.UP,
+      Phaser.Input.Keyboard.KeyCodes.DOWN,
+      Phaser.Input.Keyboard.KeyCodes.LEFT,
+      Phaser.Input.Keyboard.KeyCodes.RIGHT,
+  ]);
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys({
@@ -139,11 +153,11 @@ export class GameScene extends Phaser.Scene {
     if (this.state.phase === 'PAUSED') return;
 
     if (this.state.phase === 'GAME_OVER') {
-      this.particles.update(seconds);
-      if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-        this.scene.restart();
-      }
-      return;
+        this.particles.update(seconds);
+        if (this.canRestart && Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+          this.scene.restart();
+        }
+        return;
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keyC)) {
@@ -167,8 +181,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.ui.updateSlowMo(this.state.slowMoTimer);
 
-    this.handleMovement(seconds);
     this.handleRhythm(seconds);
+    this.handleMovement(seconds);
     this.updateCritics(seconds);
     this.bonusManager.update(seconds);
     this.checkBonusCollision();
@@ -212,10 +226,30 @@ export class GameScene extends Phaser.Scene {
     this.ui.updatePhase(this.state.currentStage, this.state.spotlightsCaught);
 
     const tick = this.state.updateBeat(seconds);
+    const beatTime = 60 / this.state.getCurrentBpm();
+    const windowRatio = this.state.getCurrentBeatWindow() / beatTime;
+    const inWindow = this.state.evaluateBeat().hit;
 
-    const scale = 2.4 - tick.progress * 1.4;
+    const scale = 2.2 - tick.progress * 1.2;
     this.shrinkingRing.setScale(scale);
-    this.shrinkingRing.setAlpha(0.2 + tick.progress * 0.8);
+    this.shrinkingRing.setAlpha(0.25 + tick.progress * 0.75);
+
+    // Обновляем нижнюю ритм-шкалу
+    this.ui.updateBeatBar(tick.progress, windowRatio, inWindow, tick.isBeat);
+
+    // Подсветка кольца при попадании в окно (пока не горит цветной отклик после нажатия)
+    if (this.ringFeedbackTimer > 0) {
+      this.ringFeedbackTimer -= seconds;
+    } else if (inWindow !== this.wasInWindow) {
+      this.wasInWindow = inWindow;
+      if (inWindow) {
+        this.rhythmRing.setStrokeStyle(3, 0x4ade80, 1);
+        this.shrinkingRing.setStrokeStyle(3, 0xfef08a, 1);
+      } else {
+        this.rhythmRing.setStrokeStyle(2, 0xfbbf24, 0.45);
+        this.shrinkingRing.setStrokeStyle(2, 0xffffff, 0.85);
+      }
+    }
 
     if (tick.isBeat) {
       if (tick.isKick) AudioSystem.kick();
@@ -223,18 +257,17 @@ export class GameScene extends Phaser.Scene {
 
       this.critics.onBeat(tick.isKick);
 
-      this.rhythmRing.setScale(1.2);
+      this.rhythmRing.setScale(1.15);
       this.tweens.add({
         targets: this.rhythmRing,
-        strokeColor: 0xfbbf24,
-        strokeAlpha: 0.5,
-        duration: 180,
+        scale: 1,
+        duration: 140,
       });
 
       this.tweens.add({
         targets: this.showman,
-        scaleX: 1.25,
-        scaleY: 0.8,
+        scaleX: 1.22,
+        scaleY: 0.82,
         yoyo: true,
         duration: 110,
         ease: 'Quad.easeInOut',
@@ -279,19 +312,10 @@ export class GameScene extends Phaser.Scene {
         } else {
           this.ui.showRhythmFeedback('БЕЗОПАСНЫЙ ШАГ', '#22c55e');
         }
-
-        // Возврат кольца к белому цвету
-        this.time.delayedCall(160, () => {
-          if (this.shrinkingRing) this.shrinkingRing.setStrokeStyle(2, 0xffffff, 0.9);
-        });
       } else {
         this.shrinkingRing.setStrokeStyle(2, 0xef4444, 0.9);
         const reason = evaluation.rating === 'РАНО' ? 'РАНО!' : 'ПОЗДНО!';
         this.ui.showRhythmFeedback(reason, '#ef4444');
-
-        this.time.delayedCall(160, () => {
-          if (this.shrinkingRing) this.shrinkingRing.setStrokeStyle(2, 0xffffff, 0.9);
-        });
       }
     }
 
@@ -343,6 +367,14 @@ export class GameScene extends Phaser.Scene {
     this.critics.update(seconds, this.showman.x, this.showman.y, this.time.now, this.state.isSlowMo);
 
     const isLethal = this.isDashing || this.dashGraceTimer > 0;
+    if (isLethal !== this.wasLethal) {
+        this.wasLethal = isLethal;
+        if (isLethal) {
+          this.showman.setFillStyle(0xfacc15).setStrokeStyle(3, 0xffffff);
+        } else {
+          this.showman.setFillStyle(0xd90429).setStrokeStyle(2, 0xfbbf24);
+        }
+    }
     const collision = this.critics.checkPlayerCollision(
         this.showman.x,
         this.showman.y,
@@ -365,6 +397,7 @@ export class GameScene extends Phaser.Scene {
           this.cameras.main.shake(300, 0.03);
 
           this.time.delayedCall(1000, () => {
+            this.canRestart = true;
             this.ui.showGameOver(this.state.applause, this.getRomanAct(this.state.act));
           });
           return;
@@ -424,38 +457,38 @@ export class GameScene extends Phaser.Scene {
   }
 
   private checkSpotlightCollision(): void {
-    const dist = Phaser.Math.Distance.Between(this.showman.x, this.showman.y, this.spotlight.x, this.spotlight.y);
-    if (dist < 36) {
-      const result = this.state.registerSpotlightCaught();
-      this.ui.updateScore(this.state.applause, this.state.hype);
+      const dist = Phaser.Math.Distance.Between(this.showman.x, this.showman.y, this.spotlight.x, this.spotlight.y);
+        if (dist < 36) {
+          const result = this.state.registerSpotlightCaught();
+          this.ui.updateScore(this.state.applause, this.state.hype);
 
-      if (result.phaseSwitched) {
-        this.ui.showPhase2Alert();
+          if (result.phaseSwitched) {
+            this.ui.showPhase2Alert();
+          }
+
+          if (this.spotlightPointer) {
+            this.spotlightPointer.destroy();
+            this.spotlightPointer = null;
+          }
+
+          this.particles.createConfettiExplosion(this.spotlight.x, this.spotlight.y);
+          this.cameras.main.flash(90, 254, 240, 138, false);
+
+          this.spotlight.setPosition(
+              Phaser.Math.Between(80, this.scale.width - 80),
+              Phaser.Math.Between(110, this.scale.height - 80)
+          );
+
+          const maxEnemies = Math.min(6, 2 + this.state.act);
+          if (this.critics.count < maxEnemies) {
+            this.critics.spawnSingleCritic(this.state.currentStage === 2, this.state.isCasualMode);
+          }
+
+          if (result.isNewAct) {
+            this.ui.updateAct(this.getRomanAct(this.state.act));
+            this.cameras.main.flash(200, 217, 119, 6, false);
+          }
       }
-
-      if (this.spotlightPointer) {
-        this.spotlightPointer.destroy();
-        this.spotlightPointer = null;
-      }
-
-      this.particles.createConfettiExplosion(this.spotlight.x, this.spotlight.y);
-      this.cameras.main.flash(90, 254, 240, 138, false);
-
-      this.spotlight.setPosition(
-          Phaser.Math.Between(80, this.scale.width - 80),
-          Phaser.Math.Between(110, this.scale.height - 80)
-      );
-
-      const maxEnemies = Math.min(6, 2 + this.state.act);
-      if (this.critics.count < maxEnemies) {
-        this.critics.spawnSingleCritic(this.state.currentStage === 2, this.state.isCasualMode);
-      }
-
-      if (result.isNewAct) {
-        this.ui.updateAct(this.getRomanAct(this.state.act));
-        this.cameras.main.flash(200, 217, 119, 6, false);
-      }
-    }
   }
 
   private getRomanAct(act: number): string {

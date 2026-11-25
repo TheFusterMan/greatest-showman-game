@@ -1,14 +1,17 @@
 import Phaser from 'phaser';
 import { GAME_CONFIG } from '../logic/rules';
+import { BeatBar } from './BeatBar';
 
 export class UIManager {
     private applauseText: Phaser.GameObjects.Text;
     private actText: Phaser.GameObjects.Text;
-    private timerText: Phaser.GameObjects.Text;
+    private spotlightsProgressText: Phaser.GameObjects.Text;
+    private spotlightsStarsText: Phaser.GameObjects.Text;
+    private slowMoBanner: Phaser.GameObjects.Text;
     private modeText: Phaser.GameObjects.Text;
     private rhythmFeedbackText: Phaser.GameObjects.Text;
-    private slowMoBanner: Phaser.GameObjects.Text;
 
+    private beatBar: BeatBar;
     private pauseOverlay: Phaser.GameObjects.Container;
     private livesText: Phaser.GameObjects.Text;
 
@@ -18,6 +21,10 @@ export class UIManager {
     constructor(private scene: Phaser.Scene) {
         const { width, height } = scene.scale;
 
+        this.livesText = scene.add.text(28, 24, '❤️❤️❤️', {
+            fontSize: '26px',
+        }).setDepth(5);
+
         this.applauseText = scene.add.text(28, 56, '0 ★  (x1)', {
             fontFamily: "'Jost', sans-serif",
             fontSize: '22px',
@@ -25,66 +32,90 @@ export class UIManager {
             fontStyle: 'bold',
         }).setDepth(5);
 
-        // Текст Акта строго по центру
+        // Центр сверху: Акт + наглядные 5 софитов
         this.actText = scene.add.text(width / 2, 22, '— АКТ I —', {
             fontFamily: "'Jost', sans-serif",
-            fontSize: '26px',
+            fontSize: '24px',
             color: '#fbbf24',
             fontStyle: 'bold',
         }).setOrigin(0.5, 0).setDepth(5);
 
-        this.timerText = scene.add.text(width - 28, 22, 'ФАЗА 1 • СОФИТЫ: 0/5', {
+        this.spotlightsProgressText = scene.add.text(width / 2, 56, 'СОФИТЫ ДО АНШЛАГА: ☆ ☆ ☆ ☆ ☆', {
             fontFamily: "'Jost', sans-serif",
-            fontSize: '18px',
+            fontSize: '15px',
             color: '#fef08a',
             fontStyle: 'bold',
-        }).setOrigin(1, 0).setDepth(5);
+        }).setOrigin(0.5, 0).setDepth(5);
 
-        this.slowMoBanner = scene.add.text(width / 2, 60, '', {
+        this.spotlightsStarsText = scene.add.text(width / 2, 70, '', {
             fontFamily: "'Jost', sans-serif",
-            fontSize: '16px',
+            fontSize: '40px',
+            color: '#fef08a',
+            fontStyle: 'bold',
+        }).setOrigin(0.5, 0).setDepth(5);
+
+        this.slowMoBanner = scene.add.text(width / 2, 70, '', {
+            fontFamily: "'Jost', sans-serif",
+            fontSize: '15px',
             color: '#38bdf8',
             fontStyle: 'bold',
-        }).setOrigin(0.5).setDepth(5);
+        }).setOrigin(0.5, 0).setDepth(5);
 
-        this.modeText = scene.add.text(28, height - 30, '[C] РЕЖИМ: ШОУ (СТАНДАРТ)', {
+        this.modeText = scene.add.text(24, height - 28, '[C] РЕЖИМ: ШОУ (СТАНДАРТ)', {
             fontFamily: "'Jost', sans-serif",
-            fontSize: '14px',
+            fontSize: '13px',
             color: '#94a3b8',
-        }).setDepth(5);
+        }).setOrigin(0, 0.5).setDepth(5);
 
-        this.rhythmFeedbackText = scene.add.text(width / 2, height - 60, '', {
+        this.rhythmFeedbackText = scene.add.text(width / 2, height - 62, '', {
             fontFamily: "'Jost', sans-serif",
-            fontSize: '20px',
+            fontSize: '19px',
             fontStyle: 'bold',
             color: '#facc15',
         }).setOrigin(0.5).setDepth(5);
 
-        this.livesText = scene.add.text(28, 20, '❤️❤️❤️', {
-            fontSize: '26px',
-        }).setDepth(5);
+        // Нижняя ритм-шкала
+        this.beatBar = new BeatBar(scene, width / 2, height - 28, 6);
 
         this.pauseOverlay = this.createPauseOverlay(width, height);
+    }
+
+    public updateBeatBar(progress: number, windowRatio: number, inWindow: boolean, isBeat: boolean): void {
+        this.beatBar.update(progress, windowRatio, inWindow, isBeat);
     }
 
     public updateScore(applause: number, hype: number): void {
         this.applauseText.setText(`${applause.toLocaleString()} ★  (x${hype})`);
     }
 
-    // Фикс: обновляет заголовок Акта по центру!
     public updateAct(actRoman: string): void {
         this.actText.setText(`— АКТ ${actRoman} —`);
     }
 
     public updatePhase(currentStage: number, spotlightsCaught: number): void {
         const key = `${currentStage}_${spotlightsCaught}`;
-        if (key === this.lastPhaseKey) return; // Ничего не менялось -> не дёргаем WebGL!
+        if (key === this.lastPhaseKey) return;
         this.lastPhaseKey = key;
 
         if (currentStage === 2) {
-            this.timerText.setText('ФАЗА 2 • АНШЛАГ!').setColor('#f97316');
+            this.spotlightsProgressText
+                .setText('★ ФАЗА 2: АНШЛАГ! ★')
+                .setColor('#f97316');
+            this.spotlightsStarsText.setVisible(false); // Прячем звёзды во 2-й фазе!
+            this.slowMoBanner.setY(82);
         } else {
-            this.timerText.setText(`ФАЗА 1 • СОФИТЫ: ${spotlightsCaught}/${GAME_CONFIG.phase2TargetSpotlights}`).setColor('#fef08a');
+            const target = GAME_CONFIG.phase2TargetSpotlights;
+            const filled = Math.min(target, spotlightsCaught);
+            const stars = Array.from({ length: target }, (_, i) => (i < filled ? '★' : '☆')).join(' ');
+
+            this.spotlightsProgressText
+                .setText('СОФИТЫ ДО ФАЗЫ 2:')
+                .setColor('#fef08a');
+            this.spotlightsStarsText
+                .setVisible(true)
+                .setText(stars)
+                .setColor('#f97316');
+            this.slowMoBanner.setY(116); // Сдвигаем слоу-мо ниже звёзд (они на y=70, размер 40px)
         }
     }
 
@@ -104,33 +135,39 @@ export class UIManager {
         const hearts = '❤️'.repeat(Math.max(0, lives)) + '🖤'.repeat(Math.max(0, GAME_CONFIG.maxLives - lives));
         this.livesText.setText(hearts);
 
+        this.scene.tweens.killTweensOf(this.livesText);
+        this.livesText.setScale(1);
         this.scene.tweens.add({
             targets: this.livesText,
             scale: 1.25,
-            duration: 120,
+            duration: 110,
             yoyo: true,
         });
     }
 
-    public showFloatingScore(x: number, y: number, score: number): void {
-        const popup = this.scene.add.text(x, y - 20, `+${score}`, {
+    public showFloatingText(x: number, y: number, text: string, color = '#fef08a'): void {
+        const popup = this.scene.add.text(x, y - 20, text, {
             fontFamily: "'Jost', sans-serif",
-            fontSize: '20px',
+            fontSize: '18px',
             fontStyle: 'bold',
-            color: '#fef08a',
+            color,
             stroke: '#000000',
             strokeThickness: 3,
         }).setOrigin(0.5).setDepth(15);
 
         this.scene.tweens.add({
             targets: popup,
-            y: y - 55,
+            y: y - 58,
             alpha: 0,
-            scale: 1.2,
-            duration: 700,
+            scale: 1.15,
+            duration: 850,
             ease: 'Sine.easeOut',
             onComplete: () => popup.destroy(),
         });
+    }
+
+    public showFloatingScore(x: number, y: number, score: number): void {
+        this.showFloatingText(x, y, `+${score}`, '#fef08a');
     }
 
     public showRhythmFeedback(text: string, color: string): void {
@@ -167,6 +204,7 @@ export class UIManager {
 
     public showGameOver(applause: number, actRoman: string): void {
         const { width, height } = this.scene.scale;
+        this.beatBar.setVisible(false);
         this.scene.add.rectangle(width / 2, height / 2, width, height, 0x110206, 0.9).setDepth(20);
 
         this.scene.add.text(width / 2, height * 0.35, 'ЗАНАВЕС ОПУСКАЕТСЯ', {
