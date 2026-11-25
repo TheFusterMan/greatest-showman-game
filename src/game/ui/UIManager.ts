@@ -12,6 +12,9 @@ export class UIManager {
     private pauseOverlay: Phaser.GameObjects.Container;
     private livesText: Phaser.GameObjects.Text;
 
+    private lastPhaseKey = '';
+    private lastSlowMoText = '';
+
     constructor(private scene: Phaser.Scene) {
         const { width, height } = scene.scale;
 
@@ -74,6 +77,10 @@ export class UIManager {
     }
 
     public updatePhase(currentStage: number, spotlightsCaught: number): void {
+        const key = `${currentStage}_${spotlightsCaught}`;
+        if (key === this.lastPhaseKey) return; // Ничего не менялось -> не дёргаем WebGL!
+        this.lastPhaseKey = key;
+
         if (currentStage === 2) {
             this.timerText.setText('ФАЗА 2 • АНШЛАГ!').setColor('#f97316');
         } else {
@@ -82,11 +89,10 @@ export class UIManager {
     }
 
     public updateSlowMo(secondsRemaining: number): void {
-        if (secondsRemaining > 0) {
-            this.slowMoBanner.setText(`⌛ ЗАМЕДЛЕНИЕ: ${secondsRemaining.toFixed(1)}с`);
-        } else {
-            this.slowMoBanner.setText('');
-        }
+        const txt = secondsRemaining > 0 ? `⌛ ЗАМЕДЛЕНИЕ: ${secondsRemaining.toFixed(1)}с` : '';
+        if (txt === this.lastSlowMoText) return;
+        this.lastSlowMoText = txt;
+        this.slowMoBanner.setText(txt);
     }
 
     public updateMode(isCasual: boolean): void {
@@ -128,6 +134,7 @@ export class UIManager {
     }
 
     public showRhythmFeedback(text: string, color: string): void {
+        this.scene.tweens.killTweensOf(this.rhythmFeedbackText);
         this.rhythmFeedbackText.setText(text).setColor(color).setAlpha(1);
         this.scene.tweens.add({ targets: this.rhythmFeedbackText, alpha: 0, duration: 600 });
     }

@@ -6,6 +6,7 @@ import { AudioSystem } from './audio/AudioSystem';
 import { ParticleManager } from './vfx/ParticleManager';
 import { UIManager } from './ui/UIManager';
 import { GAME_CONFIG } from './logic/rules';
+import { DebugPanel } from './ui/DebugPanel';
 
 export class GameScene extends Phaser.Scene {
   private state!: GameState;
@@ -39,6 +40,8 @@ export class GameScene extends Phaser.Scene {
 
   // Виньетка сапфирового слоу-мо
   private slowMoVignette!: Phaser.GameObjects.Rectangle;
+
+  private debugPanel!: DebugPanel;
 
   constructor() {
     super('GameScene');
@@ -95,10 +98,25 @@ export class GameScene extends Phaser.Scene {
 
     this.pauseKeyP = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.P);
     this.pauseKeyEsc = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+  
+    this.debugPanel = new DebugPanel(this);
+    this.setupAutoPauseOnHide();
   }
 
   update(_time: number, delta: number): void {
-    const seconds = delta / 1000;
+    const seconds = Math.min(delta / 1000, 0.05);
+
+    this.debugPanel.update(seconds, {
+      bpm: this.state.getCurrentBpm(),
+      beatWindowMs: this.state.getCurrentBeatWindow() * 1000,
+      enemiesCount: this.critics.count,
+      particlesActive: this.particles.activeCount,
+      particlesPool: this.particles.poolSize,
+      stage: this.state.currentStage,
+      act: this.state.act,
+      hype: this.state.hype,
+      isCasual: this.state.isCasualMode,
+    });
 
     if (this.critics.count === 0) {
       this.respawnTimer += seconds;
@@ -156,6 +174,38 @@ export class GameScene extends Phaser.Scene {
     this.checkBonusCollision();
     this.particles.update(seconds);
     this.checkSpotlightCollision();
+  }
+
+  private setupAutoPauseOnHide(): void {
+    const pauseGame = () => {
+      AudioSystem.suspend();
+      if (this.state.phase === 'PLAYING') {
+        const isPaused = this.state.togglePause();
+        this.ui.setPauseVisible(isPaused);
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        pauseGame();
+      } else {
+        AudioSystem.resume();
+      }
+    };
+
+    const onWindowBlur = () => pauseGame();
+    const onWindowFocus = () => AudioSystem.resume();
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('focus', onWindowFocus);
+
+    // Обязательно снимаем обработчики при рестарте сцены!
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('focus', onWindowFocus);
+    });
   }
 
   private handleRhythm(seconds: number): void {

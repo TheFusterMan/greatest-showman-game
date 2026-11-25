@@ -116,4 +116,16 @@ export class AudioSystem {
             osc.stop(ctx.currentTime + 0.35);
         } catch {}
     }
+
+    static suspend(): void {
+        if (this.ctx && this.ctx.state === 'running') {
+            this.ctx.suspend().catch(() => {});
+        }
+    }
+
+    static resume(): void {
+        if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+        }
+    }
 }

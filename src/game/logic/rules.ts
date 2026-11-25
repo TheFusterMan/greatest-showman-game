@@ -17,3 +17,5 @@ export const GAME_CONFIG = {
     slowMoDuration: 5.0,         // Длительность замедления времени
     slowMoSpeedMultiplier: 0.35, // Насколько медленнее ползут враги
 } as const;
+
+export const GAME_VERSION = '0.4.0-alpha';
