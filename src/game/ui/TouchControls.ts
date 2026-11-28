@@ -26,7 +26,9 @@ export class TouchControls {
     private readonly maxJoyRadius = 46;
     private readonly deadZone = 7;
 
-    private joystickPointerId: number | null = null;
+    // Отслеживаем конкретный палец через DOM-события по всему экрану
+    private activeTouchId: number | null = null;
+    private mouseJoystickActive = false;
     private joyOriginX = 0;
     private joyOriginY = 0;
 
@@ -42,10 +44,9 @@ export class TouchControls {
     constructor(private scene: Phaser.Scene, private callbacks: TouchControlCallbacks) {
         const { width, height } = scene.scale;
 
-        // Включаем мультитач для одновременного движения и рывков
         scene.input.addPointer(2);
 
-        this.restJoyX = 105;
+        this.restJoyX = 115;
         this.restJoyY = height - 105;
 
         this.gameplayContainer = scene.add.container(0, 0).setDepth(25);
@@ -60,7 +61,7 @@ export class TouchControls {
         this.gameplayContainer.add([this.joyBase, this.joyKnob]);
 
         // --- Кнопка рывка (справа снизу) ---
-        const dashX = width - 105;
+        const dashX = width - 115;
         const dashY = height - 105;
 
         this.dashOuter = scene.add.circle(dashX, dashY, 50, 0xd90429, 0.25)
@@ -111,7 +112,7 @@ export class TouchControls {
             this.hudButtonsContainer.add([this.modeBtnBg, this.modeBtnText]);
         }
 
-        // Всегда видимая кнопка включения/выключения тач-джойстика (в т.ч. для проверки на ПК)
+        // Кнопка переключения тач-режима
         this.toggleBadge = scene.add.text(width - 14, 72, '📱 [T]', {
             fontFamily: "'Jost', sans-serif",
             fontSize: '12px',
@@ -129,14 +130,7 @@ export class TouchControls {
             this.toggleManual();
         });
 
-        // Автоопределение мобильного/тач-устройства (на ПК можно переключить кнопкой 📱 [T] или клавишей [T])
-        const isCoarsePointer = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
-        const isTouchCapable = !scene.sys.game.device.os.desktop || scene.sys.game.device.input.touch || isCoarsePointer;
-        this.setVisible(TouchControls.manualOverride ?? isTouchCapable);
-
-        this.toggleKeyT = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.T);
-
-        // Кнопка полного экрана (рядом с 📱 [T])
+        // Кнопка полного экрана
         const fsBadge = scene.add.text(width - 82, 72, '⛶', {
             fontFamily: "'Jost', sans-serif",
             fontSize: '14px',
@@ -161,6 +155,11 @@ export class TouchControls {
             }
         });
 
+        const isCoarsePointer = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+        const isTouchCapable = !scene.sys.game.device.os.desktop || scene.sys.game.device.input.touch || isCoarsePointer;
+        this.setVisible(TouchControls.manualOverride ?? isTouchCapable);
+
+        this.toggleKeyT = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.T);
         this.bindPointerEvents();
     }
 
@@ -206,7 +205,6 @@ export class TouchControls {
         return false;
     }
 
-    // Вызывается в update(): переключение по [T] и пульсация кнопки рывка в такт!
     public update(inWindow: boolean, isBeat: boolean): void {
         if (Phaser.Input.Keyboard.JustDown(this.toggleKeyT)) {
             this.toggleManual();
@@ -239,13 +237,23 @@ export class TouchControls {
 
     private bindPointerEvents(): void {
         const { width } = this.scene.scale;
+        const canvas = this.scene.game.canvas;
 
-        const onDown = (pointer: Phaser.Input.Pointer, currentlyOver: Phaser.GameObjects.GameObject[]) => {
+        const toGameCoords = (clientX: number, clientY: number) => {
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return null;
+            return {
+                x: ((clientX - rect.left) / rect.width) * this.scene.scale.width,
+                y: ((clientY - rect.top) / rect.height) * this.scene.scale.height,
+            };
+        };
+
+        // 1) Старт касания/клика внутри холста (с учётом кнопок UI)
+        const onPhaserDown = (pointer: Phaser.Input.Pointer, currentlyOver: Phaser.GameObjects.GameObject[]) => {
             AudioSystem.resume();
 
             if (currentlyOver.length > 0) return;
 
-            // Если коснулись сенсорного экрана на ноутбуке-трансформере — включаем тач-интерфейс
             if (pointer.wasTouch && !this.visible) {
                 TouchControls.manualOverride = true;
                 this.setVisible(true);
@@ -253,55 +261,118 @@ export class TouchControls {
 
             if (!this.visible || !this.gameplayVisible) return;
 
-            // Левая половина — джойстик
-            if (pointer.x < width * 0.5 && this.joystickPointerId === null) {
-                this.joystickPointerId = pointer.id;
-                this.joyOriginX = Phaser.Math.Clamp(pointer.x, 60, width * 0.45);
-                this.joyOriginY = Phaser.Math.Clamp(pointer.y, 110, this.scene.scale.height - 60);
-
-                this.joyBase.setPosition(this.joyOriginX, this.joyOriginY).setAlpha(0.7);
-                this.joyKnob.setPosition(this.joyOriginX, this.joyOriginY).setAlpha(0.95);
-                this.updateJoystickVector(pointer.x, pointer.y);
-            }
-            // Правая нижняя половина — кнопка рывка
-            else if (pointer.x >= width * 0.5 && pointer.y > 85) {
-                this.dashQueued = true;
-                this.dashInner.setScale(0.88);
-                this.scene.time.delayedCall(90, () => {
-                    if (this.dashInner) this.dashInner.setScale(1);
-                });
+            if (pointer.x < width * 0.5 && this.activeTouchId === null && !this.mouseJoystickActive) {
+                if (pointer.wasTouch && 'changedTouches' in pointer.event) {
+                    const touch = (pointer.event as TouchEvent).changedTouches[0];
+                    if (touch) {
+                        this.activeTouchId = touch.identifier;
+                        this.startJoystickAt(pointer.x, pointer.y);
+                    }
+                } else {
+                    this.mouseJoystickActive = true;
+                    this.startJoystickAt(pointer.x, pointer.y);
+                }
+            } else if (pointer.x >= width * 0.5 && pointer.y > 85) {
+                this.triggerDashFeedback();
             }
         };
 
-        const onMove = (pointer: Phaser.Input.Pointer) => {
-            if (pointer.id === this.joystickPointerId) {
-                this.updateJoystickVector(pointer.x, pointer.y);
+        // 2) Старт касания на тёмных боковых полосах ВНЕ холста
+        const onDomTouchStart = (e: TouchEvent) => {
+            AudioSystem.resume();
+            if (e.target === canvas) return;
+            if (!this.visible || !this.gameplayVisible) return;
+
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                const pos = toGameCoords(t.clientX, t.clientY);
+                if (!pos) continue;
+
+                if (pos.x < width * 0.5 && this.activeTouchId === null && !this.mouseJoystickActive) {
+                    this.activeTouchId = t.identifier;
+                    this.startJoystickAt(pos.x, pos.y);
+                } else if (pos.x >= width * 0.5 && pos.y > 85) {
+                    this.triggerDashFeedback();
+                }
             }
         };
 
-        const onUp = (pointer: Phaser.Input.Pointer) => {
-            if (pointer.id === this.joystickPointerId) {
+        // 3) Непрерывный трекинг пальца по ВСЕМУ экрану (включая поля за пределами холста!)
+        const onDomTouchMove = (e: TouchEvent) => {
+            if (this.activeTouchId === null) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === this.activeTouchId) {
+                    const pos = toGameCoords(t.clientX, t.clientY);
+                    if (pos) this.updateJoystickVector(pos.x, pos.y);
+                    break;
+                }
+            }
+        };
+
+        const onDomTouchEnd = (e: TouchEvent) => {
+            if (this.activeTouchId === null) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === this.activeTouchId) {
+                    this.resetJoystick();
+                    break;
+                }
+            }
+        };
+
+        // 4) Поддержка перетаскивания мышью за границы холста (для теста на ПК)
+        const onDomMouseMove = (e: MouseEvent) => {
+            if (!this.mouseJoystickActive) return;
+            const pos = toGameCoords(e.clientX, e.clientY);
+            if (pos) this.updateJoystickVector(pos.x, pos.y);
+        };
+
+        const onDomMouseUp = () => {
+            if (this.mouseJoystickActive) {
                 this.resetJoystick();
             }
         };
 
-        const onGameOut = () => {
-            this.resetJoystick();
-        };
+        const onBlur = () => this.resetJoystick();
 
-        this.scene.input.on('pointerdown', onDown);
-        this.scene.input.on('pointermove', onMove);
-        this.scene.input.on('pointerup', onUp);
-        this.scene.input.on('pointercancel', onUp);
-        this.scene.input.on('gameout', onGameOut);
+        this.scene.input.on('pointerdown', onPhaserDown);
 
-        // Чистим подписки при рестарте сцены
+        window.addEventListener('touchstart', onDomTouchStart, { passive: true });
+        window.addEventListener('touchmove', onDomTouchMove, { passive: true });
+        window.addEventListener('touchend', onDomTouchEnd, { passive: true });
+        window.addEventListener('touchcancel', onDomTouchEnd, { passive: true });
+        window.addEventListener('mousemove', onDomMouseMove);
+        window.addEventListener('mouseup', onDomMouseUp);
+        window.addEventListener('blur', onBlur);
+
         this.scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-            this.scene.input.off('pointerdown', onDown);
-            this.scene.input.off('pointermove', onMove);
-            this.scene.input.off('pointerup', onUp);
-            this.scene.input.off('pointercancel', onUp);
-            this.scene.input.off('gameout', onGameOut);
+            this.scene.input.off('pointerdown', onPhaserDown);
+
+            window.removeEventListener('touchstart', onDomTouchStart);
+            window.removeEventListener('touchmove', onDomTouchMove);
+            window.removeEventListener('touchend', onDomTouchEnd);
+            window.removeEventListener('touchcancel', onDomTouchEnd);
+            window.removeEventListener('mousemove', onDomMouseMove);
+            window.removeEventListener('mouseup', onDomMouseUp);
+            window.removeEventListener('blur', onBlur);
+        });
+    }
+
+    private startJoystickAt(gx: number, gy: number): void {
+        const { width, height } = this.scene.scale;
+        this.joyOriginX = Phaser.Math.Clamp(gx, 60, width * 0.45);
+        this.joyOriginY = Phaser.Math.Clamp(gy, 110, height - 60);
+
+        this.joyBase.setPosition(this.joyOriginX, this.joyOriginY).setAlpha(0.7);
+        this.joyKnob.setPosition(this.joyOriginX, this.joyOriginY).setAlpha(0.95);
+        this.updateJoystickVector(gx, gy);
+    }
+
+    private triggerDashFeedback(): void {
+        this.dashQueued = true;
+        this.dashInner.setScale(0.88);
+        this.scene.time.delayedCall(90, () => {
+            if (this.dashInner) this.dashInner.setScale(1);
         });
     }
 
@@ -327,7 +398,8 @@ export class TouchControls {
     }
 
     private resetJoystick(): void {
-        this.joystickPointerId = null;
+        this.activeTouchId = null;
+        this.mouseJoystickActive = false;
         this.moveX = 0;
         this.moveY = 0;
         this.joyBase.setPosition(this.restJoyX, this.restJoyY).setAlpha(1);
