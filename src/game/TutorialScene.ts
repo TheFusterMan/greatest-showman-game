@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { AudioSystem } from './audio/AudioSystem';
 import { ParticleManager } from './vfx/ParticleManager';
 import { BeatBar } from './ui/BeatBar';
+import { TouchControls } from './ui/TouchControls';
 import { GAME_CONFIG } from './logic/rules';
 
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -9,12 +10,16 @@ type Step = 1 | 2 | 3 | 4 | 5;
 export class TutorialScene extends Phaser.Scene {
     private step: Step = 1;
     private stepTransitioning = false;
+    private isPaused = false;
+
     private particles!: ParticleManager;
     private beatBar!: BeatBar;
+    private touch!: TouchControls;
 
     private showman!: Phaser.GameObjects.Rectangle;
     private rhythmRing!: Phaser.GameObjects.Arc;
     private shrinkingRing!: Phaser.GameObjects.Arc;
+    private pauseOverlay!: Phaser.GameObjects.Container;
 
     private dummyCritic: Phaser.GameObjects.Rectangle | null = null;
     private dummyLabel: Phaser.GameObjects.Text | null = null;
@@ -43,6 +48,7 @@ export class TutorialScene extends Phaser.Scene {
     private wasInWindow = false;
     private wasLethal = false;
     private touchCooldown = 0;
+    private lastTouchActive = false;
 
     constructor() {
         super('TutorialScene');
@@ -54,6 +60,7 @@ export class TutorialScene extends Phaser.Scene {
 
         this.step = 1;
         this.stepTransitioning = false;
+        this.isPaused = false;
         this.stepCards = [];
         this.dummyCritic = null;
         this.dummyLabel = null;
@@ -63,6 +70,10 @@ export class TutorialScene extends Phaser.Scene {
         this.dashTimer = 0;
         this.dashGraceTimer = 0;
         this.lastMoveDir = { x: 1, y: 0 };
+        this.ringFeedbackTimer = 0;
+        this.wasInWindow = false;
+        this.wasLethal = false;
+        this.touchCooldown = 0;
 
         this.add.rectangle(width / 2, height / 2, width, height, 0x180509);
         const gfx = this.add.graphics();
@@ -87,6 +98,7 @@ export class TutorialScene extends Phaser.Scene {
             fontStyle: 'bold',
             align: 'center',
             lineSpacing: 6,
+            wordWrap: { width: width - 80 },
         }).setOrigin(0.5).setDepth(10);
 
         this.warningText = this.add.text(width / 2, height * 0.37, '', {
@@ -95,17 +107,38 @@ export class TutorialScene extends Phaser.Scene {
             color: '#f87171',
             fontStyle: 'bold',
             align: 'center',
+            wordWrap: { width: width - 80 },
         }).setOrigin(0.5).setDepth(10);
 
-        // Общая ритм-шкала снизу (скрыта только на шаге 1, чтобы не отвлекать)
-        this.beatBar = new BeatBar(this, width / 2, height - 56, 10);
+        // Общая ритм-шкала снизу
+        this.beatBar = new BeatBar(this, width / 2, height - 58, 10);
         this.beatBar.setVisible(false);
 
-        this.add.text(width / 2, height - 20, '[ESC] Пропустить репетицию и начать шоу', {
+        // Тапабельная кнопка пропуска репетиции (работает и на мобилке, и на ПК)
+        const skipText = this.add.text(width / 2, height - 20, '[ ПРОПУСТИТЬ РЕПЕТИЦИЮ ⏭ ]', {
             fontFamily: "'Jost', sans-serif",
             fontSize: '13px',
-            color: '#71717a',
-        }).setOrigin(0.5).setDepth(10);
+            fontStyle: 'bold',
+            color: '#94a3b8',
+            backgroundColor: '#1f070ecc',
+            padding: { x: 10, y: 4 },
+        })
+            .setOrigin(0.5)
+            .setDepth(26)
+            .setInteractive({ useHandCursor: true });
+
+        skipText.on('pointerdown', () => {
+            AudioSystem.resume();
+            this.startGame();
+        });
+
+        // Подключаем мобильное тач-управление
+        this.touch = new TouchControls(this, {
+            onPauseToggle: () => this.togglePause(),
+        });
+        this.lastTouchActive = this.touch.isActive;
+
+        this.pauseOverlay = this.createPauseOverlay(width, height);
 
         this.cursors = this.input.keyboard!.createCursorKeys();
         this.wasd = this.input.keyboard!.addKeys({
@@ -136,6 +169,17 @@ export class TutorialScene extends Phaser.Scene {
             return;
         }
 
+        // Если переключили режим тача клавишей [T] или кнопкой 📱 — обновляем подсказки
+        if (this.touch.isActive !== this.lastTouchActive) {
+            this.lastTouchActive = this.touch.isActive;
+            this.refreshStepInstruction();
+        }
+
+        if (this.isPaused) {
+            this.touch.update(false, false);
+            return;
+        }
+
         if (this.touchCooldown > 0) this.touchCooldown -= seconds;
 
         this.handleRhythm(seconds);
@@ -144,14 +188,16 @@ export class TutorialScene extends Phaser.Scene {
 
         if (this.stepTransitioning) return;
 
-        // Шаг 1: Движение (WASD или Стрелки)
+        // Шаг 1: Движение (клавиатура ИЛИ тач-джойстик)
         if (this.step === 1) {
-            const isMoving = this.wasd.left.isDown || this.wasd.right.isDown ||
+            const isMovingKeyboard =
+                this.wasd.left.isDown || this.wasd.right.isDown ||
                 this.wasd.up.isDown || this.wasd.down.isDown ||
                 this.cursors.left.isDown || this.cursors.right.isDown ||
                 this.cursors.up.isDown || this.cursors.down.isDown;
+            const isMovingTouch = this.touch.moveX !== 0 || this.touch.moveY !== 0;
 
-            if (isMoving) {
+            if (isMovingKeyboard || isMovingTouch) {
                 this.stepTransitioning = true;
                 this.time.delayedCall(450, () => this.setStep(2));
             }
@@ -177,13 +223,13 @@ export class TutorialScene extends Phaser.Scene {
                     this.stepTransitioning = true;
                     this.time.delayedCall(450, () => this.setStep(4));
                 } else if (this.touchCooldown <= 0) {
-                    // Отталкиваем без урона и объясняем ошибку
                     this.touchCooldown = 0.7;
                     const angle = Phaser.Math.Angle.Between(this.dummyCritic.x, this.dummyCritic.y, this.showman.x, this.showman.y);
                     this.showman.x += Math.cos(angle) * 65;
                     this.showman.y += Math.sin(angle) * 65;
                     this.cameras.main.shake(90, 0.01);
-                    this.warningText.setText('ОСТОРОЖНО! Пешком критик бьёт!\nИди к нему и нажми [ПРОБЕЛ] В РИТМ!');
+                    const actionKey = this.touch.isActive ? '[РЫВОК]' : '[ПРОБЕЛ]';
+                    this.warningText.setText(`ОСТОРОЖНО! Пешком критик бьёт!\nИди к нему и нажми ${actionKey} В РИТМ!`);
                 }
             }
         }
@@ -206,7 +252,9 @@ export class TutorialScene extends Phaser.Scene {
     }
 
     private handleMovement(seconds: number): void {
-        if (Phaser.Input.Keyboard.JustDown(this.spaceKey) && !this.isDashing && this.step >= 2) {
+        const dashPressed = Phaser.Input.Keyboard.JustDown(this.spaceKey) || this.touch.consumeDashPressed();
+
+        if (dashPressed && !this.isDashing && this.step >= 2) {
             const evaluation = this.checkBeatHit();
             this.ringFeedbackTimer = 0.18;
 
@@ -222,7 +270,8 @@ export class TutorialScene extends Phaser.Scene {
                 if (this.step === 2 && !this.stepTransitioning) {
                     this.beatHitsCount++;
                     const label = evaluation.rating === 'ОТЛИЧНО' ? 'ОТЛИЧНО!' : 'ХОРОШО!';
-                    this.instructionText.setText(`${label} (${this.beatHitsCount}/3)\nЖми [ПРОБЕЛ], когда полоски в зелёном центре`);
+                    const actionKey = this.touch.isActive ? '[РЫВОК]' : '[ПРОБЕЛ]';
+                    this.instructionText.setText(`${label} (${this.beatHitsCount}/3)\nЖми ${actionKey}, когда полоски в зелёном центре`);
 
                     if (this.beatHitsCount >= 3) {
                         this.stepTransitioning = true;
@@ -245,7 +294,6 @@ export class TutorialScene extends Phaser.Scene {
             this.dashGraceTimer -= seconds;
         }
 
-        // Визуальная подсветка состояния тарана
         const isLethal = this.isDashing || this.dashGraceTimer > 0;
         if (isLethal !== this.wasLethal) {
             this.wasLethal = isLethal;
@@ -263,11 +311,16 @@ export class TutorialScene extends Phaser.Scene {
         if (this.wasd.up.isDown || this.cursors.up.isDown) dy -= 1;
         if (this.wasd.down.isDown || this.cursors.down.isDown) dy += 1;
 
+        // Подключаем вектор с виртуального джойстика
+        if (dx === 0 && dy === 0) {
+            dx = this.touch.moveX;
+            dy = this.touch.moveY;
+        }
+
         if (dx !== 0 || dy !== 0) {
             this.lastMoveDir = { x: dx, y: dy };
         }
 
-        // Рывок работает даже если клавиши направления на секунду отпущены
         const moveX = (this.isDashing && dx === 0 && dy === 0) ? this.lastMoveDir.x : dx;
         const moveY = (this.isDashing && dx === 0 && dy === 0) ? this.lastMoveDir.y : dy;
 
@@ -283,7 +336,6 @@ export class TutorialScene extends Phaser.Scene {
     }
 
     private handleRhythm(seconds: number): void {
-        // Используем точно такой же темп и окно, как в самой игре!
         const beatTime = 60 / GAME_CONFIG.bpmRange.min;
         const windowSec = GAME_CONFIG.beatWindowRange.fair;
 
@@ -327,6 +379,8 @@ export class TutorialScene extends Phaser.Scene {
         }
 
         this.beatBar.update(progress, windowSec / beatTime, inWindow, isBeat);
+        this.touch.update(this.step >= 2 && inWindow, this.step >= 2 && isBeat);
+
         this.rhythmRing.setPosition(this.showman.x, this.showman.y);
         this.shrinkingRing.setPosition(this.showman.x, this.showman.y);
     }
@@ -348,18 +402,16 @@ export class TutorialScene extends Phaser.Scene {
         this.stepTransitioning = false;
         this.warningText.setText('');
         this.updateCardStyles();
+        this.refreshStepInstruction();
 
         if (step === 1) {
             this.beatBar.setVisible(false);
-            this.instructionText.setText('ШАГ 1: ДВИЖЕНИЕ\nИспользуй [ WASD ] или [ СТРЕЛКИ ]');
         } else if (step === 2) {
             this.beatHitsCount = 0;
             this.beatBar.setVisible(true);
-            this.instructionText.setText('ШАГ 2: ПОПАДИ В РИТМ (0/3)\nЖми [ПРОБЕЛ], когда полоски сойдутся в зелёном центре');
         } else if (step === 3) {
             const { width, height } = this.scale;
             this.beatBar.setVisible(true);
-            this.instructionText.setText('ШАГ 3: ТАРАН РЫВКОМ\nБеги на критика и нажми [ПРОБЕЛ] в ритм — сбей его!');
 
             this.dummyCritic = this.add.rectangle(width * 0.72, height * 0.56, 30, 30, 0x64748b);
             this.dummyCritic.setStrokeStyle(2, 0xf43f5e).setDepth(2);
@@ -371,7 +423,6 @@ export class TutorialScene extends Phaser.Scene {
             }).setOrigin(0.5).setDepth(5);
         } else if (step === 4) {
             const { width, height } = this.scale;
-            this.instructionText.setText('ШАГ 4: СОФИТЫ\nПодбирай золотые софиты! 5 штук запустят Фазу 2 (Аншлаг)');
 
             this.tutorialSpotlight = this.add.circle(width * 0.5, height * 0.56, 28, 0xfacc15, 0.95)
                 .setStrokeStyle(3, 0xffffff).setDepth(2);
@@ -382,23 +433,84 @@ export class TutorialScene extends Phaser.Scene {
                 fontStyle: 'bold',
             }).setOrigin(0.5).setDepth(5);
         } else if (step === 5) {
-            this.instructionText.setText('★ ПРЕВОСХОДНО! ЗАЛ ЖДЕТ! ★').setColor('#22c55e');
             this.time.delayedCall(1100, () => this.startGame());
         }
     }
 
+    private refreshStepInstruction(): void {
+        const isTouch = this.touch.isActive;
+
+        if (this.step === 1) {
+            this.instructionText.setText(
+                isTouch
+                    ? 'ШАГ 1: ДВИЖЕНИЕ\nВеди пальцем по левой половине экрана (джойстик)'
+                    : 'ШАГ 1: ДВИЖЕНИЕ\nИспользуй [ WASD ] или [ СТРЕЛКИ ]'
+            );
+        } else if (this.step === 2) {
+            const key = isTouch ? 'кнопку [РЫВОК] справа' : '[ПРОБЕЛ]';
+            this.instructionText.setText(
+                `ШАГ 2: ПОПАДИ В РИТМ (${this.beatHitsCount}/3)\nЖми ${key}, когда полоски сойдутся в зелёном центре`
+            );
+        } else if (this.step === 3) {
+            const key = isTouch ? '[РЫВОК]' : '[ПРОБЕЛ]';
+            this.instructionText.setText(
+                `ШАГ 3: ТАРАН РЫВКОМ\nБеги на критика и нажми ${key} в ритм — сбей его!`
+            );
+        } else if (this.step === 4) {
+            this.instructionText.setText(
+                'ШАГ 4: СОФИТЫ\nПодбирай золотые софиты! 5 штук запустят Фазу 2 (Аншлаг)'
+            );
+        } else if (this.step === 5) {
+            this.instructionText.setText('★ ПРЕВОСХОДНО! ЗАЛ ЖДЕТ! ★').setColor('#22c55e');
+        }
+    }
+
+    private togglePause(): void {
+        this.isPaused = !this.isPaused;
+        this.pauseOverlay.setVisible(this.isPaused);
+        this.touch.setGameplayVisible(!this.isPaused);
+    }
+
+    private createPauseOverlay(width: number, height: number): Phaser.GameObjects.Container {
+        const overlay = this.add.container(width / 2, height / 2).setDepth(30).setVisible(false);
+        const bg = this.add.rectangle(0, 0, width, height, 0x0a0205, 0.82);
+        const frame = this.add.rectangle(0, 0, 360, 140, 0x1f070e, 0.95)
+            .setStrokeStyle(2, 0xfbbf24)
+            .setInteractive({ useHandCursor: true });
+
+        frame.on('pointerdown', () => this.togglePause());
+
+        const title = this.add.text(0, -24, 'ПАУЗА', {
+            fontFamily: "'Jost', sans-serif",
+            fontSize: '34px',
+            color: '#fbbf24',
+            fontStyle: 'bold',
+        }).setOrigin(0.5);
+
+        const subtitle = this.add.text(0, 26, 'Коснитесь окна, чтобы продолжить', {
+            fontFamily: "'Jost', sans-serif",
+            fontSize: '16px',
+            color: '#fef08a',
+        }).setOrigin(0.5);
+
+        overlay.add([bg, frame, title, subtitle]);
+        return overlay;
+    }
+
     private createHeaderCards(width: number): void {
         const titles = ['1. ХОДЬБА', '2. РИТМ', '3. ТАРАН', '4. СОФИТ'];
-        const cardWidth = 148;
-        const gap = 162;
-        const startX = width / 2 - (gap * 1.5);
+        // Слегка сдвигаем и сжимаем при узком экране, чтобы не налезать на правые кнопки [⏸] и [📱]
+        const maxArea = Math.min(640, width - 170);
+        const gap = maxArea / 4;
+        const cardWidth = Math.max(76, gap - 10);
+        const startX = (width - 70) / 2 - gap * 1.5;
 
         for (let i = 0; i < 4; i++) {
-            const container = this.add.container(startX + i * gap, 44);
-            const bg = this.add.rectangle(0, 0, cardWidth, 40, 0x1e1b4b, 0.7).setStrokeStyle(2, 0x475569);
+            const container = this.add.container(startX + i * gap, 42);
+            const bg = this.add.rectangle(0, 0, cardWidth, 38, 0x1e1b4b, 0.7).setStrokeStyle(2, 0x475569);
             const txt = this.add.text(0, 0, titles[i], {
                 fontFamily: "'Jost', sans-serif",
-                fontSize: '14px',
+                fontSize: cardWidth < 110 ? '11px' : '13px',
                 color: '#94a3b8',
                 fontStyle: 'bold',
             }).setOrigin(0.5);

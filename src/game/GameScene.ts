@@ -5,70 +5,80 @@ import { BonusManager } from './entities/BonusManager';
 import { AudioSystem } from './audio/AudioSystem';
 import { ParticleManager } from './vfx/ParticleManager';
 import { UIManager } from './ui/UIManager';
-import { GAME_CONFIG } from './logic/rules';
 import { DebugPanel } from './ui/DebugPanel';
+import { TouchControls } from './ui/TouchControls';
+import { GAME_CONFIG } from './logic/rules';
 
 export class GameScene extends Phaser.Scene {
   private state!: GameState;
   private particles!: ParticleManager;
   private ui!: UIManager;
   private bonusManager!: BonusManager;
+  private debugPanel!: DebugPanel;
+  private touch!: TouchControls;
 
   private showman!: Phaser.GameObjects.Rectangle;
   private rhythmRing!: Phaser.GameObjects.Arc;
+  private shrinkingRing!: Phaser.GameObjects.Arc;
   private spotlight!: Phaser.GameObjects.Arc;
   private critics!: CriticManager;
 
   private spotlightPointer!: Phaser.GameObjects.Text | null;
+  private slowMoVignette!: Phaser.GameObjects.Rectangle;
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private spaceKey!: Phaser.Input.Keyboard.Key;
-  private isDashing = false;
-  private dashTimer = 0;
-
-  // Вектор последнего движения (чтобы рывок не срабатывал на месте!)
-  private lastMoveDir = { x: 1, y: 0 };
-
   private pauseKeyP!: Phaser.Input.Keyboard.Key;
   private pauseKeyEsc!: Phaser.Input.Keyboard.Key;
   private keyC!: Phaser.Input.Keyboard.Key;
 
-  private shrinkingRing!: Phaser.GameObjects.Arc;
-  private respawnTimer = 0;
+  private isDashing = false;
+  private dashTimer = 0;
   private dashGraceTimer = 0;
+  private lastMoveDir = { x: 1, y: 0 };
 
+  private respawnTimer = 0;
   private ringFeedbackTimer = 0;
   private wasInWindow = false;
   private wasLethal = false;
-  private canRestart = false; // Чтобы Пробел в секунду смерти не сбрасывал экран раньше GameOver
-
-  // Виньетка сапфирового слоу-мо
-  private slowMoVignette!: Phaser.GameObjects.Rectangle;
-
-  private debugPanel!: DebugPanel;
+  private canRestart = false;
+  private lastTouchMode = false;
 
   constructor() {
     super('GameScene');
   }
 
   create(): void {
-    this.ui = new UIManager(this);
-
     const { width, height } = this.scale;
 
     this.state = new GameState();
     this.particles = new ParticleManager(this);
     this.critics = new CriticManager(this);
     this.bonusManager = new BonusManager(this);
+    this.ui = new UIManager(this);
+    this.debugPanel = new DebugPanel(this);
 
-    this.critics.spawnFirstCriticWithHint();
+    this.touch = new TouchControls(this, {
+      onPauseToggle: () => this.togglePauseState(),
+      onModeToggle: () => this.toggleCasualState(),
+    });
+    this.lastTouchMode = this.touch.isActive;
+    this.ui.setTouchMode(this.touch.isActive);
+
+    // Сброс флагов при рестарте сцены
     this.isDashing = false;
-    this.keyC = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.C);
+    this.dashTimer = 0;
+    this.dashGraceTimer = 0;
+    this.lastMoveDir = { x: 1, y: 0 };
+    this.respawnTimer = 0;
+    this.ringFeedbackTimer = 0;
+    this.wasInWindow = false;
+    this.wasLethal = false;
+    this.canRestart = false;
 
     this.drawWoodenStage(width, height);
 
-    // Подсветка замедления времени (полноэкранный оверлей)
     this.slowMoVignette = this.add.rectangle(width / 2, height / 2, width, height, 0x0284c7, 0)
         .setDepth(1.2);
 
@@ -83,23 +93,15 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     this.showman = this.add.rectangle(width * 0.25, height * 0.5, 32, 32, 0xd90429);
-    this.showman.setStrokeStyle(2, 0xfbbf24);
-    this.showman.setDepth(2);
+    this.showman.setStrokeStyle(2, 0xfbbf24).setDepth(2);
 
-  this.rhythmRing = this.add.circle(this.showman.x, this.showman.y, 36, 0xfbbf24, 0.08);
-  this.rhythmRing.setStrokeStyle(2, 0xfbbf24, 0.45).setDepth(1.9);
+    this.rhythmRing = this.add.circle(this.showman.x, this.showman.y, 36, 0xfbbf24, 0.08);
+    this.rhythmRing.setStrokeStyle(2, 0xfbbf24, 0.45).setDepth(1.9);
 
-  this.shrinkingRing = this.add.circle(this.showman.x, this.showman.y, 36, 0xffffff, 0);
-  this.shrinkingRing.setStrokeStyle(2, 0xffffff, 0.85).setDepth(1.9);
+    this.shrinkingRing = this.add.circle(this.showman.x, this.showman.y, 36, 0xffffff, 0);
+    this.shrinkingRing.setStrokeStyle(2, 0xffffff, 0.85).setDepth(1.9);
 
-  this.canRestart = false;
-  this.input.keyboard!.addCapture([
-      Phaser.Input.Keyboard.KeyCodes.SPACE,
-      Phaser.Input.Keyboard.KeyCodes.UP,
-      Phaser.Input.Keyboard.KeyCodes.DOWN,
-      Phaser.Input.Keyboard.KeyCodes.LEFT,
-      Phaser.Input.Keyboard.KeyCodes.RIGHT,
-  ]);
+    this.critics.spawnFirstCriticWithHint();
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys({
@@ -109,11 +111,34 @@ export class GameScene extends Phaser.Scene {
       right: Phaser.Input.Keyboard.KeyCodes.D,
     }) as any;
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-
     this.pauseKeyP = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.P);
     this.pauseKeyEsc = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
-  
-    this.debugPanel = new DebugPanel(this);
+    this.keyC = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.C);
+
+    this.input.keyboard!.addCapture([
+      Phaser.Input.Keyboard.KeyCodes.SPACE,
+      Phaser.Input.Keyboard.KeyCodes.UP,
+      Phaser.Input.Keyboard.KeyCodes.DOWN,
+      Phaser.Input.Keyboard.KeyCodes.LEFT,
+      Phaser.Input.Keyboard.KeyCodes.RIGHT,
+    ]);
+
+    // Возобновление по клику на окно паузы + рестарт по тапу на GameOver
+    this.events.on('resume-requested', () => {
+      if (this.state.phase === 'PAUSED') this.togglePauseState();
+    });
+
+    const onGameOverTap = () => {
+      if (this.state.phase === 'GAME_OVER' && this.canRestart) {
+        this.scene.restart();
+      }
+    };
+    this.input.on('pointerdown', onGameOverTap);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.off('pointerdown', onGameOverTap);
+      this.events.off('resume-requested');
+    });
+
     this.setupAutoPauseOnHide();
   }
 
@@ -132,6 +157,32 @@ export class GameScene extends Phaser.Scene {
       isCasual: this.state.isCasualMode,
     });
 
+    if (this.touch.isActive !== this.lastTouchMode) {
+      this.lastTouchMode = this.touch.isActive;
+      this.ui.setTouchMode(this.touch.isActive);
+    }
+
+    if (
+        Phaser.Input.Keyboard.JustDown(this.pauseKeyP) ||
+        Phaser.Input.Keyboard.JustDown(this.pauseKeyEsc)
+    ) {
+      this.togglePauseState();
+    }
+
+    if (this.state.phase === 'PAUSED') {
+      this.touch.update(false, false);
+      return;
+    }
+
+    if (this.state.phase === 'GAME_OVER') {
+      this.particles.update(seconds);
+      this.touch.setGameplayVisible(false);
+      if (this.canRestart && Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+        this.scene.restart();
+      }
+      return;
+    }
+
     if (this.critics.count === 0) {
       this.respawnTimer += seconds;
       if (this.respawnTimer >= 1.5) {
@@ -142,28 +193,8 @@ export class GameScene extends Phaser.Scene {
       this.respawnTimer = 0;
     }
 
-    if (
-        Phaser.Input.Keyboard.JustDown(this.pauseKeyP) ||
-        Phaser.Input.Keyboard.JustDown(this.pauseKeyEsc)
-    ) {
-      const isPaused = this.state.togglePause();
-      this.ui.setPauseVisible(isPaused);
-    }
-
-    if (this.state.phase === 'PAUSED') return;
-
-    if (this.state.phase === 'GAME_OVER') {
-        this.particles.update(seconds);
-        if (this.canRestart && Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-          this.scene.restart();
-        }
-        return;
-    }
-
     if (Phaser.Input.Keyboard.JustDown(this.keyC)) {
-      const isCasual = this.state.toggleCasualMode();
-      this.ui.updateMode(isCasual);
-      this.ui.showRhythmFeedback(isCasual ? 'РЕЖИМ РЕПЕТИЦИИ' : 'ШОУ (СТАНДАРТ)', isCasual ? '#22c55e' : '#facc15');
+      this.toggleCasualState();
     }
 
     if (this.state.invulnerableTimer > 0) {
@@ -173,12 +204,7 @@ export class GameScene extends Phaser.Scene {
       this.showman.setAlpha(1);
     }
 
-    // Визуальный оверлей слоу-мо
-    if (this.state.isSlowMo) {
-      this.slowMoVignette.setAlpha(0.18);
-    } else {
-      this.slowMoVignette.setAlpha(0);
-    }
+    this.slowMoVignette.setAlpha(this.state.isSlowMo ? 0.18 : 0);
     this.ui.updateSlowMo(this.state.slowMoTimer);
 
     this.handleRhythm(seconds);
@@ -190,36 +216,21 @@ export class GameScene extends Phaser.Scene {
     this.checkSpotlightCollision();
   }
 
-  private setupAutoPauseOnHide(): void {
-    const pauseGame = () => {
-      AudioSystem.suspend();
-      if (this.state.phase === 'PLAYING') {
-        const isPaused = this.state.togglePause();
-        this.ui.setPauseVisible(isPaused);
-      }
-    };
+  private togglePauseState(): void {
+    if (this.state.phase === 'GAME_OVER') return;
+    const isPaused = this.state.togglePause();
+    this.ui.setPauseVisible(isPaused);
+    this.touch.setGameplayVisible(!isPaused);
+  }
 
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        pauseGame();
-      } else {
-        AudioSystem.resume();
-      }
-    };
-
-    const onWindowBlur = () => pauseGame();
-    const onWindowFocus = () => AudioSystem.resume();
-
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('blur', onWindowBlur);
-    window.addEventListener('focus', onWindowFocus);
-
-    // Обязательно снимаем обработчики при рестарте сцены!
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('blur', onWindowBlur);
-      window.removeEventListener('focus', onWindowFocus);
-    });
+  private toggleCasualState(): void {
+    const isCasual = this.state.toggleCasualMode();
+    this.ui.updateMode(isCasual);
+    this.touch.updateModeLabel(isCasual);
+    this.ui.showRhythmFeedback(
+        isCasual ? 'РЕЖИМ РЕПЕТИЦИИ ВКЛЮЧЕН' : 'ШОУ (СТАНДАРТ)',
+        isCasual ? '#22c55e' : '#facc15'
+    );
   }
 
   private handleRhythm(seconds: number): void {
@@ -234,10 +245,9 @@ export class GameScene extends Phaser.Scene {
     this.shrinkingRing.setScale(scale);
     this.shrinkingRing.setAlpha(0.25 + tick.progress * 0.75);
 
-    // Обновляем нижнюю ритм-шкалу
     this.ui.updateBeatBar(tick.progress, windowRatio, inWindow, tick.isBeat);
+    this.touch.update(inWindow, tick.isBeat);
 
-    // Подсветка кольца при попадании в окно (пока не горит цветной отклик после нажатия)
     if (this.ringFeedbackTimer > 0) {
       this.ringFeedbackTimer -= seconds;
     } else if (inWindow !== this.wasInWindow) {
@@ -257,13 +267,12 @@ export class GameScene extends Phaser.Scene {
 
       this.critics.onBeat(tick.isKick);
 
+      this.tweens.killTweensOf(this.rhythmRing);
       this.rhythmRing.setScale(1.15);
-      this.tweens.add({
-        targets: this.rhythmRing,
-        scale: 1,
-        duration: 140,
-      });
+      this.tweens.add({ targets: this.rhythmRing, scale: 1, duration: 140 });
 
+      this.tweens.killTweensOf(this.showman);
+      this.showman.setScale(1);
       this.tweens.add({
         targets: this.showman,
         scaleX: 1.22,
@@ -279,9 +288,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleMovement(seconds: number): void {
-    if (Phaser.Input.Keyboard.JustDown(this.spaceKey) && !this.isDashing) {
+    const dashPressed = Phaser.Input.Keyboard.JustDown(this.spaceKey) || this.touch.consumeDashPressed();
+
+    if (dashPressed && !this.isDashing) {
       const evaluation = this.state.evaluateBeat();
       const onBeat = evaluation.hit;
+      this.ringFeedbackTimer = 0.16;
 
       if (onBeat || this.state.isCasualMode) {
         this.isDashing = true;
@@ -326,10 +338,18 @@ export class GameScene extends Phaser.Scene {
         this.isDashing = false;
         this.dashGraceTimer = GAME_CONFIG.dashGraceDuration;
       }
+    } else if (this.dashGraceTimer > 0) {
+      this.dashGraceTimer -= seconds;
     }
 
-    if (this.dashGraceTimer > 0) {
-      this.dashGraceTimer -= seconds;
+    const isLethal = this.isDashing || this.dashGraceTimer > 0;
+    if (isLethal !== this.wasLethal) {
+      this.wasLethal = isLethal;
+      if (isLethal) {
+        this.showman.setFillStyle(0xfacc15).setStrokeStyle(3, 0xffffff);
+      } else {
+        this.showman.setFillStyle(0xd90429).setStrokeStyle(2, 0xfbbf24);
+      }
     }
 
     let dx = 0;
@@ -339,18 +359,17 @@ export class GameScene extends Phaser.Scene {
     if (this.cursors.up.isDown || this.wasd.up.isDown) dy -= 1;
     if (this.cursors.down.isDown || this.wasd.down.isDown) dy += 1;
 
-    // Запоминаем последнее направление движения
+    if (dx === 0 && dy === 0) {
+      dx = this.touch.moveX;
+      dy = this.touch.moveY;
+    }
+
     if (dx !== 0 || dy !== 0) {
       this.lastMoveDir = { x: dx, y: dy };
     }
 
-    // Если рывок нажат без зажатого WASD — прыгаем в lastMoveDir!
-    let moveX = dx;
-    let moveY = dy;
-    if (this.isDashing && dx === 0 && dy === 0) {
-      moveX = this.lastMoveDir.x;
-      moveY = this.lastMoveDir.y;
-    }
+    const moveX = (this.isDashing && dx === 0 && dy === 0) ? this.lastMoveDir.x : dx;
+    const moveY = (this.isDashing && dx === 0 && dy === 0) ? this.lastMoveDir.y : dy;
 
     if (moveX !== 0 || moveY !== 0) {
       const speed = this.isDashing ? GAME_CONFIG.dashSpeed : GAME_CONFIG.playerSpeed;
@@ -360,28 +379,15 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.showman.x = Phaser.Math.Clamp(this.showman.x, 24, this.scale.width - 24);
-    this.showman.y = Phaser.Math.Clamp(this.showman.y, 76, this.scale.height - 35);
+    this.showman.y = Phaser.Math.Clamp(this.showman.y, 76, this.scale.height - 45);
   }
 
   private updateCritics(seconds: number): void {
     this.critics.update(seconds, this.showman.x, this.showman.y, this.time.now, this.state.isSlowMo);
 
     const isLethal = this.isDashing || this.dashGraceTimer > 0;
-    if (isLethal !== this.wasLethal) {
-        this.wasLethal = isLethal;
-        if (isLethal) {
-          this.showman.setFillStyle(0xfacc15).setStrokeStyle(3, 0xffffff);
-        } else {
-          this.showman.setFillStyle(0xd90429).setStrokeStyle(2, 0xfbbf24);
-        }
-    }
-    const collision = this.critics.checkPlayerCollision(
-        this.showman.x,
-        this.showman.y,
-        isLethal
-    );
+    const collision = this.critics.checkPlayerCollision(this.showman.x, this.showman.y, isLethal);
 
-    // Удар по игроку
     if (collision.playerKilled && this.state.invulnerableTimer <= 0) {
       const damageResult = this.state.takeDamage();
 
@@ -393,6 +399,7 @@ export class GameScene extends Phaser.Scene {
           this.particles.createConfettiExplosion(this.showman.x, this.showman.y);
           this.showman.setVisible(false);
           this.rhythmRing.setVisible(false);
+          this.shrinkingRing.setVisible(false);
           this.cameras.main.flash(350, 255, 255, 255, false);
           this.cameras.main.shake(300, 0.03);
 
@@ -409,14 +416,12 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Критик повержен рывком!
     if (collision.defeatedAt) {
       this.particles.createConfettiExplosion(collision.defeatedAt.x, collision.defeatedAt.y);
       this.state.registerCriticDefeated();
       this.ui.updateScore(this.state.applause, this.state.hype);
       this.cameras.main.shake(120, 0.015);
 
-      // ДРОП БОНУСА ИЗ КРИТИКА
       this.bonusManager.trySpawnFromCritic(
           collision.defeatedAt.x,
           collision.defeatedAt.y,
@@ -457,38 +462,73 @@ export class GameScene extends Phaser.Scene {
   }
 
   private checkSpotlightCollision(): void {
-      const dist = Phaser.Math.Distance.Between(this.showman.x, this.showman.y, this.spotlight.x, this.spotlight.y);
-        if (dist < 36) {
-          const result = this.state.registerSpotlightCaught();
-          this.ui.updateScore(this.state.applause, this.state.hype);
+    const dist = Phaser.Math.Distance.Between(this.showman.x, this.showman.y, this.spotlight.x, this.spotlight.y);
+    if (dist < 36) {
+      const result = this.state.registerSpotlightCaught();
+      this.ui.updateScore(this.state.applause, this.state.hype);
 
-          if (result.phaseSwitched) {
-            this.ui.showPhase2Alert();
-          }
-
-          if (this.spotlightPointer) {
-            this.spotlightPointer.destroy();
-            this.spotlightPointer = null;
-          }
-
-          this.particles.createConfettiExplosion(this.spotlight.x, this.spotlight.y);
-          this.cameras.main.flash(90, 254, 240, 138, false);
-
-          this.spotlight.setPosition(
-              Phaser.Math.Between(80, this.scale.width - 80),
-              Phaser.Math.Between(110, this.scale.height - 80)
-          );
-
-          const maxEnemies = Math.min(6, 2 + this.state.act);
-          if (this.critics.count < maxEnemies) {
-            this.critics.spawnSingleCritic(this.state.currentStage === 2, this.state.isCasualMode);
-          }
-
-          if (result.isNewAct) {
-            this.ui.updateAct(this.getRomanAct(this.state.act));
-            this.cameras.main.flash(200, 217, 119, 6, false);
-          }
+      if (this.state.currentStage === 1) {
+        const left = GAME_CONFIG.phase2TargetSpotlights - this.state.spotlightsCaught;
+        const msg = left === 1
+            ? 'ЕЩЁ 1 СОФИТ ДО ФАЗЫ 2!'
+            : `СОФИТ ${this.state.spotlightsCaught}/${GAME_CONFIG.phase2TargetSpotlights}`;
+        this.ui.showFloatingText(this.spotlight.x, this.spotlight.y, msg, '#fef08a');
       }
+
+      if (result.phaseSwitched) {
+        this.ui.showPhase2Alert();
+      }
+
+      if (this.spotlightPointer) {
+        this.spotlightPointer.destroy();
+        this.spotlightPointer = null;
+      }
+
+      this.particles.createConfettiExplosion(this.spotlight.x, this.spotlight.y);
+      this.cameras.main.flash(90, 254, 240, 138, false);
+
+      this.spotlight.setPosition(
+          Phaser.Math.Between(80, this.scale.width - 80),
+          Phaser.Math.Between(110, this.scale.height - 95)
+      );
+
+      const maxEnemies = Math.min(6, 2 + this.state.act);
+      if (this.critics.count < maxEnemies) {
+        this.critics.spawnSingleCritic(this.state.currentStage === 2, this.state.isCasualMode);
+      }
+
+      if (result.isNewAct) {
+        this.ui.updateAct(this.getRomanAct(this.state.act));
+        this.cameras.main.flash(200, 217, 119, 6, false);
+      }
+    }
+  }
+
+  private setupAutoPauseOnHide(): void {
+    const pauseGame = () => {
+      AudioSystem.suspend();
+      if (this.state.phase === 'PLAYING') {
+        this.togglePauseState();
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) pauseGame();
+      else AudioSystem.resume();
+    };
+
+    const onWindowBlur = () => pauseGame();
+    const onWindowFocus = () => AudioSystem.resume();
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('focus', onWindowFocus);
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('focus', onWindowFocus);
+    });
   }
 
   private getRomanAct(act: number): string {
@@ -500,7 +540,6 @@ export class GameScene extends Phaser.Scene {
     this.add.rectangle(width / 2, height / 2, width, height, 0x180509);
     const stageGfx = this.add.graphics();
     stageGfx.lineStyle(1, 0x2d0c14, 0.7);
-
     for (let y = 0; y < height; y += 36) {
       stageGfx.lineBetween(0, y, width, y);
     }

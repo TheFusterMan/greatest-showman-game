@@ -222,7 +222,7 @@ export class UIManager {
             lineSpacing: 10,
         }).setOrigin(0.5).setDepth(21);
 
-        this.scene.add.text(width / 2, height * 0.72, 'НАЖМИТЕ [ПРОБЕЛ] ЧТОБЫ ПОВТОРИТЬ ШОУ', {
+        this.scene.add.text(width / 2, height * 0.72, 'НАЖМИТЕ [ПРОБЕЛ] ИЛИ КОСНИТЕСЬ ЭКРАНА ЧТОБЫ ПОВТОРИТЬ ШОУ', {
             fontFamily: "'Jost', sans-serif",
             fontSize: '18px',
             color: '#fbbf24',
@@ -233,7 +233,12 @@ export class UIManager {
     private createPauseOverlay(width: number, height: number): Phaser.GameObjects.Container {
         const overlay = this.scene.add.container(width / 2, height / 2);
         const bg = this.scene.add.rectangle(0, 0, width, height, 0x0a0205, 0.85);
-        const frame = this.scene.add.rectangle(0, 0, 480, 160, 0x1f070e, 0.95).setStrokeStyle(2, 0xfbbf24);
+        const frame = this.scene.add.rectangle(0, 0, 560, 160, 0x1f070e, 0.95).setStrokeStyle(2, 0xfbbf24);
+
+        frame.setInteractive({ useHandCursor: true });
+        frame.on('pointerdown', () => {
+            this.scene.events.emit('resume-requested');
+        });
 
         const title = this.scene.add.text(0, -30, '— АНТРАКТ —', {
             fontFamily: "'Jost', sans-serif",
@@ -242,7 +247,7 @@ export class UIManager {
             fontStyle: 'bold',
         }).setOrigin(0.5);
 
-        const subtitle = this.scene.add.text(0, 30, 'ШОУ НА ПАУЗЕ\nНажмите [P] или [ESC], чтобы продолжить', {
+        const subtitle = this.scene.add.text(0, 30, 'ШОУ НА ПАУЗЕ\nНажмите [P], [ESC] или коснитесь окна, чтобы продолжить', {
             fontFamily: "'Jost', sans-serif",
             fontSize: '18px',
             color: '#fef08a',
@@ -254,5 +259,9 @@ export class UIManager {
         overlay.setDepth(30);
         overlay.setVisible(false);
         return overlay;
+    }
+
+    public setTouchMode(isTouch: boolean): void {
+        this.modeText.setVisible(!isTouch);
     }
 }
