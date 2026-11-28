@@ -33,3 +33,16 @@ window.addEventListener('resize', () => {
         window.dispatchEvent(new Event('blur'));
     }
 });
+
+const loader = document.getElementById('loader');
+if (loader) {
+    const waitForCanvas = () => {
+        if (document.querySelector('#game canvas')) {
+            loader.classList.add('hidden');
+            setTimeout(() => loader.remove(), 300);
+        } else {
+            requestAnimationFrame(waitForCanvas);
+        }
+    };
+    requestAnimationFrame(waitForCanvas);
+}

@@ -5,20 +5,129 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <title>Game Dev Starter</title>
+    <title>Showman</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Jost:wght@500;700;800;900&display=swap" rel="stylesheet" />
+
+    <style>
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      html, body, #app, #game {
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #180509;
+        color: #fef08a;
+        font-family: 'Jost', system-ui, -apple-system, sans-serif;
+        overscroll-behavior: none;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      /* Прелоадер, пока грузится Phaser */
+      #loader {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #180509;
+        color: #fef08a;
+        transition: opacity 0.25s ease;
+      }
+
+      #loader.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .loader-star {
+        font-size: 46px;
+        color: #facc15;
+        animation: pulseStar 1s ease-in-out infinite;
+      }
+
+      @keyframes pulseStar {
+        0%, 100% { transform: scale(0.9); opacity: 0.65; }
+        50% { transform: scale(1.15); opacity: 1; }
+      }
+
+      #rotate-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: #180509;
+        color: #fef08a;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 24px;
+        gap: 18px;
+      }
+
+      @media (orientation: portrait) and (pointer: coarse) {
+        #rotate-overlay {
+          display: flex;
+        }
+      }
+
+      .rotate-icon {
+        font-size: 54px;
+        animation: tilt 1.6s ease-in-out infinite;
+      }
+
+      @keyframes tilt {
+        0%, 100% { transform: rotate(0deg); }
+        50% { transform: rotate(-90deg); }
+      }
+
+      #force-landscape-btn {
+        background: #d90429;
+        color: #fef08a;
+        border: 2px solid #fbbf24;
+        border-radius: 10px;
+        padding: 14px 24px;
+        font-family: inherit;
+        font-size: 16px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+    </style>
   </head>
+
   <body>
     <main id="app">
       <div id="game"></div>
     </main>
+
+    <div id="loader">
+      <div class="loader-star">★</div>
+      <div style="font-size: 18px; font-weight: 800; letter-spacing: 2px;">ЗАГРУЗКА ШОУ...</div>
+    </div>
+
     <div id="rotate-overlay">
-    <div class="rotate-icon">📱</div>
+      <div class="rotate-icon">📱</div>
       <div style="font-size: 22px; font-weight: 800;">ПОВЕРНИТЕ ТЕЛЕФОН ГОРИЗОНТАЛЬНО</div>
       <div style="font-size: 14px; color: #94a3b8; max-width: 280px;">
         В горизонтальном режиме удобно управлять джойстиком и бить в ритм двумя пальцами
       </div>
       <button id="force-landscape-btn">⛶ РАЗВЕРНУТЬ В АЛЬБОМНЫЙ РЕЖИМ</button>
     </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
